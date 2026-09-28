@@ -39,11 +39,14 @@ const BUILDING_STATISTICS_PATH = path.join(
     "building_statistics.csv"
 );
 const CROWD_COLLECTION_INTERVAL_MS = 5 * 60 * 1000;
+const DEFAULT_DEVICES_PER_PERSON = 1.5;
 let crowdWriteQueue = Promise.resolve();
 let crowdCollectionTimer = null;
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "staticfile_public")));
+app.use(express.static(path.join(__dirname, "staticfile_public"), {
+    extensions: ["html"]
+}));
 
 function loadClassroomInfo() {
     const candidates = [
@@ -1616,10 +1619,12 @@ function parseRate(value, defaultValue, name) {
     return rate;
 }
 
-function parsePositiveNumber(value, defaultValue, name) {
+function parseNumberInRange(value, defaultValue, min, max, name) {
     const number = value === undefined ? defaultValue : Number(value);
-    if (!Number.isFinite(number) || number <= 0) {
-        const error = new Error(name + "は0より大きい数値で指定してください。");
+    if (!Number.isFinite(number) || number < min || number > max) {
+        const error = new Error(
+            name + "は" + min + "から" + max + "の数値で指定してください。"
+        );
         error.status = 400;
         throw error;
     }
@@ -1729,8 +1734,11 @@ app.get(
             0.6,
             "seatingRate"
         );
-        const devicesPerPerson = parsePositiveNumber(
+        // /crowd が滞在人数ベースの値を返すため、1人あたり端末数は1〜2に限定する。
+        const devicesPerPerson = parseNumberInRange(
             req.query.devicesPerPerson,
+            DEFAULT_DEVICES_PER_PERSON,
+            1,
             2,
             "devicesPerPerson"
         );

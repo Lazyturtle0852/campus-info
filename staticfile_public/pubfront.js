@@ -36,7 +36,7 @@ async function getDashboardData(form) {
         devicesPerPerson: getFormValue(
             form,
             "devicesPerPerson",
-            "2"
+            "1.5"
         ),
         departureRate: getFormValue(form, "departureRate", "0.3"),
         busUseRate: getFormValue(form, "busUseRate", "0.45"),
