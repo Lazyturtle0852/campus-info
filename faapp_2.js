@@ -2,6 +2,8 @@ import express from "express";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
+import { createCampusForecaster, getRoomNames } from "./forecast.js";
+import { createBusForecaster } from "./busforecast.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,6 +44,21 @@ const CROWD_COLLECTION_INTERVAL_MS = 5 * 60 * 1000;
 const DEFAULT_DEVICES_PER_PERSON = 1.5;
 let crowdWriteQueue = Promise.resolve();
 let crowdCollectionTimer = null;
+const DEFAULT_ASSUMPTIONS = {
+    departureRate: 0.3,
+    busUseRate: 0.45,
+    routeShare: 1
+};
+const campusForecaster = createCampusForecaster({
+    dataDir: CROWD_DATA_DIR,
+    classroomInfo: classroomInfo,
+    fetchJson: fetchJson,
+    getSnapshots: function () { return crowdHistoryState.snapshots; },
+    getTokyoTimeParts: getTokyoTimeParts,
+    getTokyoDateString: getTokyoDateString,
+    devicesPerPerson: DEFAULT_DEVICES_PER_PERSON
+});
+const outboundBusCache = new Map();
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "staticfile_public"), {
@@ -318,50 +335,9 @@ function getCurrentClasses(classApiData, now) {
 }
 
 function calculateCurrentAttendance(currentClasses, seatingRate) {
-    const roomAliases = { "θ": "θ館" };
     const countedRooms = new Set();
     const unknownRooms = new Set();
     let totalAttendance = 0;
-
-    function normalizeRoomName(roomName) {
-        if (typeof roomName !== "string") return null;
-        const normalized = roomName.normalize("NFKC").trim();
-        if (!normalized) return null;
-        return roomAliases[normalized] || normalized;
-    }
-
-    function getRoomNames(classInfo) {
-        const locations =
-            classInfo &&
-            classInfo.classroom &&
-            classInfo.classroom.locations;
-
-        if (Array.isArray(locations)) {
-            const rooms = locations
-                .map(function (location) {
-                    return normalizeRoomName(location.room);
-                })
-                .filter(Boolean);
-
-            if (rooms.length > 0) return Array.from(new Set(rooms));
-        }
-
-        const rawRoom =
-            classInfo && classInfo.classroom
-                ? classInfo.classroom.raw
-                : classInfo && classInfo.CLRM;
-
-        if (typeof rawRoom !== "string") return [];
-
-        return Array.from(
-            new Set(
-                rawRoom
-                    .split(/[、,，/／・\s]+/)
-                    .map(normalizeRoomName)
-                    .filter(Boolean)
-            )
-        );
-    }
 
     currentClasses.forEach(function (classInfo) {
         getRoomNames(classInfo).forEach(function (roomName) {
@@ -1883,6 +1859,205 @@ app.get(
     })
 );
 
+function minutesToTime(minutes) {
+    const hour = Math.floor(minutes / 60);
+    const minute = minutes % 60;
+    return String(hour).padStart(2, "0") + ":" +
+        String(minute).padStart(2, "0");
+}
+
+async function getOutboundBusData(date) {
+    const cached = outboundBusCache.get(date);
+    if (cached && Date.now() - cached.fetchedAt < 60 * 60 * 1000) {
+        return cached.data;
+    }
+    const params = new URLSearchParams({
+        date: date,
+        stopCode: "23955",
+        destination: "shonandai"
+    });
+    const data = await fetchJson(
+        "https://api.dtc.wide.ad.jp/bus?" + params.toString(),
+        "バス情報"
+    );
+    outboundBusCache.set(date, { fetchedAt: Date.now(), data: data });
+    return data;
+}
+
+/*
+ * 予報した人数に現行の式を当てはめた、1時間ごとのバスの目安。
+ * 帰り：人数 × 帰宅率 × バス利用率、来る：次の1時間の人数の増加分。
+ */
+async function getHourlyBusOutlook(date, forecastValues, bins) {
+    if (!forecastValues) return null;
+
+    let outboundData = null;
+    try {
+        outboundData = await getOutboundBusData(date);
+    } catch (error) {
+        console.error("バス情報の取得に失敗しました。", error);
+    }
+    const inboundData = getInboundBusData(date);
+
+    function valueAt(minute) {
+        const index = bins.indexOf(minute);
+        return index >= 0 ? forecastValues[index] : null;
+    }
+
+    const rows = [];
+    for (let hour = 7; hour <= 21; hour += 1) {
+        const start = minutesToTime(hour * 60);
+        const end = minutesToTime((hour + 1) * 60);
+        const stock = [valueAt(hour * 60), valueAt(hour * 60 + 30)]
+            .filter(function (v) { return v !== null; });
+        if (stock.length === 0) continue;
+        const population = Math.round(
+            stock.reduce(function (a, b) { return a + b; }, 0) / stock.length
+        );
+        const nextValue = valueAt((hour + 1) * 60);
+        const increase = nextValue === null
+            ? null
+            : nextValue - valueAt(hour * 60);
+
+        const outboundCounts = outboundData
+            ? countBusesByRoute(outboundData, start, end)
+            : null;
+        const outboundCapacity = outboundCounts
+            ? calculateTransportCapacity(outboundCounts).totalCapacity
+            : null;
+        const inboundCounts = countBusesByRoute(inboundData, start, end);
+        const inboundCapacity =
+            calculateTransportCapacity(inboundCounts).totalCapacity;
+
+        rows.push({
+            hour: hour,
+            population: population,
+            toShonandai: outboundCounts
+                ? {
+                    buses: Object.values(outboundCounts).reduce(function (a, b) { return a + b; }, 0),
+                    crowding: calculateCrowding(
+                        population,
+                        outboundCapacity,
+                        DEFAULT_ASSUMPTIONS
+                    )
+                }
+                : null,
+            toSfc: increase === null
+                ? null
+                : {
+                    buses: Object.values(inboundCounts).reduce(function (a, b) { return a + b; }, 0),
+                    crowding: calculateInboundCrowding(
+                        {
+                            status: "available",
+                            quality: "valid",
+                            estimatedPopulationDelta: increase,
+                            intervalMinutes: 60
+                        },
+                        inboundCapacity,
+                        start,
+                        end
+                    )
+                }
+        });
+    }
+
+    return {
+        assumptions: DEFAULT_ASSUMPTIONS,
+        outboundAvailable: Boolean(outboundData),
+        rows: rows
+    };
+}
+
+function parseDateParam(value) {
+    const date = String(value || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+        Number.isNaN(new Date(date + "T12:00:00+09:00").getTime())) {
+        const error = new Error("日付はYYYY-MM-DD形式で指定してください。");
+        error.status = 400;
+        throw error;
+    }
+    return date;
+}
+
+app.get(
+    "/api/campus/overview",
+    asyncRoute(async function (req, res) {
+        const now = new Date();
+        const overview = await campusForecaster.getOverview(now);
+        const today = overview.days.find(function (day) {
+            return day.date === overview.today;
+        });
+        overview.todayBus = await getHourlyBusOutlook(
+            overview.today,
+            today && today.forecast ? today.forecast.values : null,
+            overview.bins
+        );
+        res.json(overview);
+    })
+);
+
+app.get(
+    "/api/campus/day/:date",
+    asyncRoute(async function (req, res) {
+        const date = parseDateParam(req.params.date);
+        const day = await campusForecaster.getDay(date, new Date());
+        day.bus = await getHourlyBusOutlook(
+            date,
+            day.forecast ? day.forecast.values : null,
+            day.bins
+        );
+        res.json(day);
+    })
+);
+
+/*
+ * バス混雑の予報（別ページ）。キャンパス人数の予報とは
+ * 「日付 → 30分ごとの人数」の受け渡しだけでつながる。
+ */
+const busForecaster = createBusForecaster({
+    capacities: ROUTE_CAPACITIES,
+    getCampusSeries: async function (date) {
+        const day = await campusForecaster.getDay(date, new Date());
+        return {
+            bins: day.bins,
+            forecast: day.forecast ? day.forecast.values : null,
+            actual: day.actual,
+            forecastInfo: day.forecast
+                ? { basis: day.forecast.basis, issuedAt: day.forecast.issuedAt }
+                : null,
+            today: day.today,
+            nowMinute: day.nowMinute,
+            type: day.type,
+            calendar: day.calendar
+        };
+    },
+    getDepartures: async function (date, direction) {
+        const data = direction === "to_sfc"
+            ? getInboundBusData(date)
+            : await getOutboundBusData(date);
+        return (data.timetables || []).flatMap(function (timetable) {
+            return timetable.departures || [];
+        });
+    }
+});
+
+app.get(
+    "/api/bus/day/:date",
+    asyncRoute(async function (req, res) {
+        const date = parseDateParam(req.params.date);
+        const busShare = parseRate(req.query.busShare, 0.45, "busShare");
+        res.json(await busForecaster.getDay(date, { busShare: busShare }));
+    })
+);
+
+app.get("/bus/:date", function (req, res) {
+    res.sendFile(path.join(__dirname, "staticfile_public", "bus.html"));
+});
+
+app.get("/day/:date", function (req, res) {
+    res.sendFile(path.join(__dirname, "staticfile_public", "index.html"));
+});
+
 app.use(function (error, req, res, next) {
     console.error(error);
     if (res.headersSent) {
@@ -1896,6 +2071,7 @@ app.use(function (error, req, res, next) {
 
 async function startServer() {
     await initializeCrowdPersistence();
+    await campusForecaster.initialize();
 
     app.listen(port, function () {
         console.log("Server is running at http://localhost:" + port);
