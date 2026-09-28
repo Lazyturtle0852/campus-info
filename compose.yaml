@@ -1,0 +1,19 @@
+services:
+  dashboard:
+    build: .
+    init: true
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      CROWD_DATA_DIR: /app/data
+      CLASSROOM_INFO_PATH: /app/private-data/kyousitu_size.json
+      INBOUND_BUS_TIMETABLE_PATH: /app/private-data/kanachu_jikoku_from_shonandai.json
+    volumes:
+      - crowd_data:/app/data
+      - ./private-data:/app/private-data:ro
+
+volumes:
+  crowd_data:
