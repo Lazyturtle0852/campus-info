@@ -135,7 +135,7 @@ export function createBusForecaster(options) {
 
         return {
             direction: direction,
-            available: Boolean(departures),
+            available: Boolean(departures && departures.length > 0),
             totalDemand: series.forecast
                 ? slots.reduce(function (sum, slot) { return sum + (slot.demand || 0); }, 0)
                 : null,

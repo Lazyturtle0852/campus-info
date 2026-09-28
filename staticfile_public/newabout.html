@@ -315,7 +315,7 @@
 </head>
 <body>
     <main>
-        <nav><a href="/">← ダッシュボード</a> ・ <a href="/old">旧ダッシュボード</a> ・ <a href="/about">旧・混雑予測のしくみ</a> ・ <a href="/example">画面の見本（ダミーデータ）</a></nav>
+        <nav><a href="/">← トップ（見本）</a> ・ <a href="/archive">M7 の実データ版（アーカイブ）</a> ・ <a href="/mlstrategy">おまかせ予報の戦略</a> ・ <a href="/old">旧ダッシュボード</a></nav>
         <h1>キャンパス人数予報の設計</h1>
         <p class="subtitle"><span class="draft">検討中</span> 2026-09-28 時点の決定事項とモデル案の比較。本命は <a href="#m7">M7（統合案）</a></p>
         <p class="toc">
@@ -337,9 +337,15 @@
         </p>
 
         <h2 id="impl">実装の状況（2026-09-28）</h2>
+        <p class="note warn">
+            <strong>方針変更</strong>：トップ（<code>/</code>）はダミーデータで完成形を見せる見本にし、
+            予報の本命は勾配ブースティング（<a href="/mlstrategy">おまかせ予報</a>）に切り替えました。
+            このページの M7 は <a href="/archive">/archive</a> に残し、比べる相手の1つとして動かし続けます。
+            裏では学習用の生データをためています（<code>ml/README.md</code>）。
+        </p>
         <div class="table-wrap">
             <table class="decisions">
-                <tr><td>画面</td><td><code>/</code> が新しいキャンパス人数予報、日別ページは <code>/day/YYYY-MM-DD</code>。旧ダッシュボードは <code>/old</code></td></tr>
+                <tr><td>画面</td><td><code>/</code> はダミーデータの見本。M7 の実データ版は <code>/archive</code>（日別は <code>/archive/day/YYYY-MM-DD</code>）。旧ダッシュボードは <code>/old</code></td></tr>
                 <tr><td>計算の場所</td><td>Node サーバー内（<code>forecast.js</code>）。API は <code>/api/campus/overview</code> と <code>/api/campus/day/:date</code></td></tr>
                 <tr><td>モデル</td><td>M7。授業日のデータが3日分たまるまでは事前値、3日以上で b(t) と wₖ、8日以上で曜日係数、3週分で週の減衰を学習</td></tr>
                 <tr><td>定期実行</td><td>毎晩 22:00 に学習し直して1か月先まで予報。起動時にもその日の予報がなければ作る</td></tr>
@@ -677,7 +683,7 @@
         </div>
 
         <h2 id="ui"><span class="num">6</span>画面構成（PC を想定）</h2>
-        <p>ダミーデータで動く見本：<a href="/example">/example</a>（日別ページは <code>/example#/day/2026-10-07</code> のような URL）</p>
+        <p>ダミーデータで動く見本：<a href="/">/</a>（日別ページは <code>/#/day/2026-10-07</code> のような URL）</p>
         <div class="wires">
             <div class="wire">
                 <div class="bar">/　トップ</div>
@@ -725,10 +731,10 @@
             <li>学期が始まってからの学習結果の確認（事前値の係数が大きく外れていないか）</li>
             <li>正則化の強さ。架空データでの検証では、曜日係数と週の減衰が 0 側に少し引っ張られた</li>
             <li>保存した予報の上限（何日分残すか）</li>
-            <li>旧 <code>/about</code> と <code>/example</code> をいつ片付けるか</li>
+            <li>旧 <code>/about</code> と <code>/archive</code> をいつ片付けるか</li>
         </ol>
 
-        <nav><a href="/">← ダッシュボード</a> ・ <a href="/about">現行の混雑予測のしくみ</a></nav>
+        <nav><a href="/">← トップ（見本）</a> ・ <a href="/archive">M7 の実データ版（アーカイブ）</a> ・ <a href="/mlstrategy">おまかせ予報の戦略</a> ・ <a href="/about">旧・混雑予測のしくみ</a></nav>
     </main>
 </body>
 </html>
