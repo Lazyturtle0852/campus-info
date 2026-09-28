@@ -3,6 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
 import { createCampusForecaster, getRoomNames } from "./forecast.js";
+import { createBusForecaster } from "./busforecast.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2008,6 +2009,50 @@ app.get(
         res.json(day);
     })
 );
+
+/*
+ * バス混雑の予報（別ページ）。キャンパス人数の予報とは
+ * 「日付 → 30分ごとの人数」の受け渡しだけでつながる。
+ */
+const busForecaster = createBusForecaster({
+    capacities: ROUTE_CAPACITIES,
+    getCampusSeries: async function (date) {
+        const day = await campusForecaster.getDay(date, new Date());
+        return {
+            bins: day.bins,
+            forecast: day.forecast ? day.forecast.values : null,
+            actual: day.actual,
+            forecastInfo: day.forecast
+                ? { basis: day.forecast.basis, issuedAt: day.forecast.issuedAt }
+                : null,
+            today: day.today,
+            nowMinute: day.nowMinute,
+            type: day.type,
+            calendar: day.calendar
+        };
+    },
+    getDepartures: async function (date, direction) {
+        const data = direction === "to_sfc"
+            ? getInboundBusData(date)
+            : await getOutboundBusData(date);
+        return (data.timetables || []).flatMap(function (timetable) {
+            return timetable.departures || [];
+        });
+    }
+});
+
+app.get(
+    "/api/bus/day/:date",
+    asyncRoute(async function (req, res) {
+        const date = parseDateParam(req.params.date);
+        const busShare = parseRate(req.query.busShare, 0.45, "busShare");
+        res.json(await busForecaster.getDay(date, { busShare: busShare }));
+    })
+);
+
+app.get("/bus/:date", function (req, res) {
+    res.sendFile(path.join(__dirname, "staticfile_public", "bus.html"));
+});
 
 app.get("/day/:date", function (req, res) {
     res.sendFile(path.join(__dirname, "staticfile_public", "index.html"));
