@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>今日のSFCの混雑状況</title>
+    <link rel="stylesheet" href="">
+    <script src="pubfront.js" defer></script>
+</head>
+<body>
+    <main>
+        <h1 style="text-align: center;">今日のSFCの混雑は?</h1>
+
+        <section
+    aria-labelledby="crowding_overview_heading"
+    style="margin: 24px auto; max-width: 1100px;"
+>
+    <h2
+        id="crowding_overview_heading"
+        style="text-align: center;"
+    >
+        バス混雑予測
+    </h2>
+
+    <div
+        style="
+            display: grid;
+            grid-template-columns:
+                repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            align-items: stretch;
+        "
+    >
+        <!-- 湘南台からSFC -->
+        <section
+            id="inbound_crowding_summary"
+            aria-labelledby="inbound_crowding_heading"
+            aria-live="polite"
+            style="
+                padding: 28px;
+                text-align: center;
+                border: 3px solid currentColor;
+                border-radius: 16px;
+                background-color: #e5e7eb;
+                color: #374151;
+            "
+        >
+            <h3
+                id="inbound_crowding_heading"
+                style="margin-top: 0;"
+            >
+                湘南台 → SFC
+            </h3>
+
+            <div
+                id="inbound_crowding_level"
+                style="
+                    font-size: clamp(2rem, 6vw, 4rem);
+                    font-weight: bold;
+                    line-height: 1.2;
+                "
+            >
+                算出待ち
+            </div>
+
+            <p
+                id="inbound_crowding_detail"
+                style="font-size: 1.1rem;"
+            >
+                登校側時刻表とWi-Fi接続数の変化を
+                取得しています。
+            </p>
+
+            <p
+                id="wifi_change"
+                role="status"
+                style="
+                    margin-bottom: 0;
+                    padding-top: 12px;
+                    border-top: 1px solid currentColor;
+                    font-size: 0.95rem;
+                "
+            >
+                Wi-Fi接続数の変化を取得しています...
+            </p>
+        </section>
+
+        <!-- SFCから湘南台 -->
+        <section
+            id="crowding_summary"
+            aria-labelledby="crowding_heading"
+            aria-live="polite"
+            style="
+                padding: 28px;
+                text-align: center;
+                border: 3px solid currentColor;
+                border-radius: 16px;
+                background-color: #e5e7eb;
+                color: #374151;
+            "
+        >
+            <h3
+                id="crowding_heading"
+                style="margin-top: 0;"
+            >
+                SFC → 湘南台
+            </h3>
+
+            <div
+                id="crowding_level"
+                style="
+                    font-size: clamp(2rem, 6vw, 4rem);
+                    font-weight: bold;
+                    line-height: 1.2;
+                "
+            >
+                計算中...
+            </div>
+
+            <p
+                id="crowding_detail"
+                style="
+                    margin-bottom: 0;
+                    font-size: 1.1rem;
+                "
+            >
+                キャンパス滞在人数とバス輸送力を
+                取得しています。
+            </p>
+        </section>
+    </div>
+</section>
+
+        <section aria-labelledby="bus_heading">
+            <h2 id="bus_heading">バス情報</h2>
+
+            <div
+                id="bus"
+                style="margin: 50px 0 0 0; text-align: center; border: 1px solid black; display: flex; flex-direction: column;"
+            >
+                <div
+                    id="bus_shonandai"
+                    style="margin: 10px; border: 1px solid black;"
+                >
+                    湘南台方面 (SFC発)
+                </div>
+                <div id="b_s_out" aria-live="polite">
+                    湘南台方面のバス情報を取得しています...
+                </div>
+
+                <div id="bus_to_sfc" style="margin: 10px; border: 1px solid black;">SFC方面（湘南台駅西口発）</div>
+                <div id="b_to_sfc_out" aria-live="polite">SFC方面のバス情報を取得しています...</div>
+            </div>
+        </section>
+
+        <section aria-labelledby="jugyo">
+            <h2
+                id="jugyo"
+                style="margin: 50px 0 0 0; text-align: center; border: 1px solid black;"
+            >
+                授業情報
+            </h2>
+            <div id="j_out" aria-live="polite">
+                授業情報を取得しています...
+            </div>
+        </section>
+
+        <div
+            id="message"
+            role="status"
+            aria-live="polite"
+            style="margin: 10px; text-align: center;"
+        ></div>
+    </main>
+</body>
+</html>
