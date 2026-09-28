@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SFCバス混雑予報</title>
+    <style>
+        :root {
+            --text: #1f2937;
+            --muted: #6b7280;
+            --faint: #9ca3af;
+            --line: #e5e7eb;
+            --line-strong: #d1d5db;
+            --soft: #f3f4f6;
+            --softer: #f9fafb;
+            --page: #f6f7f9;
+            --card: #ffffff;
+            --actual: #1f2937;
+            --forecast: #2563eb;
+            --now: #dc2626;
+            --capacity: #9ca3af;
+            --lv1-bg: #dcfce7; --lv1-fg: #166534; --lv1-bar: #4ade80;
+            --lv2-bg: #fef9c3; --lv2-fg: #854d0e; --lv2-bar: #facc15;
+            --lv3-bg: #ffedd5; --lv3-fg: #9a3412; --lv3-bar: #fb923c;
+            --lv4-bg: #fee2e2; --lv4-fg: #991b1b; --lv4-bar: #ef4444;
+            --lv0-bg: #e5e7eb; --lv0-fg: #374151; --lv0-bar: #d1d5db;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, "Hiragino Sans", sans-serif;
+            line-height: 1.6;
+            color: var(--text);
+            background-color: var(--page);
+        }
+        a { color: var(--forecast); }
+        header.top {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 8px;
+            max-width: 1120px;
+            margin: 0 auto;
+            padding: 20px 24px 0;
+        }
+        header.top h1 { margin: 0; font-size: 1.5em; }
+        header.top h1 a { color: inherit; text-decoration: none; }
+        header.top .meta { color: var(--muted); font-size: 0.9em; }
+        header.top .meta a { margin-left: 12px; }
+        .model-line { max-width: 1120px; margin: 4px auto 0; padding: 0 24px; color: var(--muted); font-size: 0.82em; }
+        main { max-width: 1120px; margin: 0 auto; padding: 0 24px 64px; }
+        .card {
+            margin-top: 16px;
+            padding: 18px 20px;
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            background-color: var(--card);
+        }
+        .card h2 { margin: 0 0 4px; font-size: 1.1em; }
+        .card .sub { margin: 0 0 12px; color: var(--muted); font-size: 0.85em; }
+        .empty { padding: 24px; color: var(--muted); text-align: center; }
+        .error { padding: 16px; border-radius: 8px; background-color: var(--lv4-bg); color: var(--lv4-fg); }
+
+        .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 16px; }
+        .kpi { padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background-color: var(--card); }
+        .kpi .label { color: var(--muted); font-size: 0.82em; }
+        .kpi .value { font-size: 1.8em; font-weight: bold; line-height: 1.2; font-variant-numeric: tabular-nums; }
+        .kpi .value small { font-size: 0.5em; font-weight: normal; color: var(--muted); margin-left: 2px; }
+        .kpi .value.none { color: var(--faint); }
+        .kpi .note { color: var(--muted); font-size: 0.8em; }
+
+        .chart-wrap { position: relative; }
+        .chart-wrap svg { display: block; width: 100%; height: auto; }
+        .legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 6px; color: var(--muted); font-size: 0.82em; }
+        .legend i { display: inline-block; width: 22px; height: 0; margin-right: 6px; vertical-align: 4px; border-top: 2.5px solid; }
+        .legend i.cap { border-color: var(--capacity); border-top-style: dashed; }
+        .legend i.bar { width: 12px; height: 12px; border: none; vertical-align: -1px; border-radius: 2px; background: linear-gradient(90deg, var(--lv1-bar) 0 25%, var(--lv2-bar) 25% 50%, var(--lv3-bar) 50% 75%, var(--lv4-bar) 75%); }
+        .legend i.act { width: 9px; height: 9px; border: none; border-radius: 50%; background-color: var(--actual); vertical-align: 0; }
+        .legend i.n { border-color: var(--now); width: 2px; height: 12px; border-top: none; border-left: 2px solid var(--now); vertical-align: -1px; }
+        .tooltip {
+            position: absolute;
+            pointer-events: none;
+            padding: 6px 10px;
+            border: 1px solid var(--line-strong);
+            border-radius: 8px;
+            background-color: #ffffff;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            font-size: 0.82em;
+            line-height: 1.5;
+            white-space: nowrap;
+            display: none;
+            font-variant-numeric: tabular-nums;
+        }
+        .tooltip b { display: block; }
+
+        .chip { display: inline-block; padding: 1px 10px; border-radius: 999px; font-size: 0.82em; font-weight: bold; white-space: nowrap; }
+        .lv1 { background-color: var(--lv1-bg); color: var(--lv1-fg); }
+        .lv2 { background-color: var(--lv2-bg); color: var(--lv2-fg); }
+        .lv3 { background-color: var(--lv3-bg); color: var(--lv3-fg); }
+        .lv4 { background-color: var(--lv4-bg); color: var(--lv4-fg); }
+        .lv0 { background-color: var(--lv0-bg); color: var(--lv0-fg); }
+        .table-scroll { overflow-x: auto; margin-top: 12px; }
+        table.bus { width: 100%; border-collapse: collapse; font-size: 0.85em; font-variant-numeric: tabular-nums; }
+        table.bus th { color: var(--muted); font-weight: normal; text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--line-strong); white-space: nowrap; }
+        table.bus td { text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+        table.bus th:first-child, table.bus td:first-child { text-align: left; white-space: nowrap; }
+        table.bus td.times { text-align: left; color: var(--muted); font-size: 0.92em; }
+        table.bus th.times { text-align: left; }
+        table.bus td:last-child, table.bus th:last-child { text-align: center; }
+        table.bus tr.past td { color: var(--faint); }
+        table.bus tr.now td { background-color: #fef2f2; }
+
+        .day-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 16px; }
+        .day-nav h2 { margin: 0; font-size: 1.35em; }
+        .day-nav .tag { margin-left: 8px; color: var(--muted); font-size: 0.6em; font-weight: normal; }
+        .btn { display: inline-block; padding: 6px 12px; border: 1px solid var(--line-strong); border-radius: 8px; background-color: #ffffff; color: var(--text); text-decoration: none; font-size: 0.88em; }
+        .btn:hover { background-color: var(--softer); }
+        .controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin-top: 12px; color: var(--muted); font-size: 0.88em; }
+        .controls input[type="range"] { width: 160px; vertical-align: middle; }
+        .controls output { color: var(--text); font-weight: bold; font-variant-numeric: tabular-nums; }
+        .notice { margin-top: 12px; padding: 8px 12px; border-left: 4px solid var(--faint); background-color: var(--softer); color: var(--muted); font-size: 0.88em; }
+        .notice ul { margin: 4px 0 0; padding-left: 1.2em; }
+
+        @media (max-width: 900px) {
+            .kpis { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 560px) {
+            header.top, .model-line, main { padding-left: 16px; padding-right: 16px; }
+            .day-nav h2 { font-size: 1.1em; }
+            .day-nav .btn { padding: 6px 8px; }
+        }
+    </style>
+</head>
+<body>
+    <header class="top">
+        <h1><a href="/bus">SFCバス混雑予報</a></h1>
+        <div class="meta">
+            <span id="updated"></span>
+            <a href="/">キャンパス人数</a>
+            <a href="/newabout">予報のしくみ</a>
+        </div>
+    </header>
+    <div class="model-line" id="modelLine"></div>
+    <main id="app"><div class="card empty">読み込み中…</div></main>
+
+    <script>
+    const DOW_JA = ["日", "月", "火", "水", "木", "金", "土"];
+    const LEVEL_CLASS = { low: "lv1", moderate: "lv2", crowded: "lv3", over_capacity: "lv4", unavailable: "lv0" };
+    const REFRESH_MS = 5 * 60 * 1000;
+    const SHARE_KEY = "bus.busShare";
+    let refreshTimer = null;
+    let busShare = readShare();
+
+    /* ---------- ユーティリティ ---------- */
+    function parseDate(s) { const p = s.split("-").map(Number); return new Date(Date.UTC(p[0], p[1] - 1, p[2])); }
+    function addDays(s, n) { const d = parseDate(s); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+    function label(s) { const d = parseDate(s); return (d.getUTCMonth() + 1) + "/" + d.getUTCDate() + "(" + DOW_JA[d.getUTCDay()] + ")"; }
+    function num(v) { return v === null || v === undefined ? "—" : Math.round(v).toLocaleString(); }
+    function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+    function hm(t) { return t.replace(/^0/, ""); }
+    function timeOf(iso) {
+        return new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
+    }
+    function tokyoToday() {
+        return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(new Date());
+    }
+    function weekTag(cal) {
+        if (!cal || cal.status === "unknown") return "学事暦を取得できませんでした";
+        if (cal.status === "closed") return cal.reason || "授業なし";
+        return "第" + cal.week + "週";
+    }
+    function basisLabel(info) {
+        if (!info) return "";
+        return info.basis === "day_before"
+            ? "前日までに作った人数予報（" + timeOf(info.issuedAt) + "）をもとにしています。"
+            : "当日に作った人数予報（" + timeOf(info.issuedAt) + "）をもとにしています。";
+    }
+    function chip(level, text) {
+        return '<span class="chip ' + (LEVEL_CLASS[level] || "lv0") + '">' + esc(text) + "</span>";
+    }
+    function readShare() {
+        try {
+            const v = Number(localStorage.getItem(SHARE_KEY));
+            if (v >= 0.05 && v <= 1) return v;
+        } catch (e) { /* 保存できない環境では既定値 */ }
+        return 0.45;
+    }
+    function saveShare(v) {
+        try { localStorage.setItem(SHARE_KEY, String(v)); } catch (e) { /* 無視 */ }
+    }
+    async function getJson(url) {
+        const res = await fetch(url);
+        const body = await res.json().catch(function () { return {}; });
+        if (!res.ok) throw new Error(body.error || ("HTTP " + res.status));
+        return body;
+    }
+
+    /* ---------- グラフ ---------- */
+    // 棒 = 予想需要（色は混雑度）、破線 = その枠の便の定員合計、点 = 実測の人数変化から出した需要
+    function busChart(dir, nowMinute, aria) {
+        const slots = dir.slots;
+        const W = 1000, H = 260, L = 52, R = 16, T = 16, B = 30;
+        const n = slots.length;
+        const bw = (W - L - R) / n;
+        const x = function (i) { return L + bw * i; };
+        const values = [];
+        slots.forEach(function (s) {
+            if (s.demand !== null) values.push(s.demand);
+            if (s.actualDemand !== null) values.push(s.actualDemand);
+            values.push(s.capacity);
+        });
+        const maxV = values.length ? Math.max.apply(null, values) : 0;
+        const target = Math.max(maxV * 1.1, 40) / 4;
+        const step = [10, 25, 50, 100, 250, 500, 1000].find(function (s) { return s >= target; }) || 1000;
+        const top = step * 4;
+        const y = function (v) { return T + (H - T - B) * (1 - Math.min(v, top) / top); };
+
+        let s = '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="' + esc(aria) + '">';
+        for (let i = 0; i <= 4; i += 1) {
+            const v = step * i;
+            s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="var(--line)"/>';
+            s += '<text x="' + (L - 8) + '" y="' + (y(v) + 4) + '" font-size="12" fill="var(--muted)" text-anchor="end">' + v.toLocaleString() + "</text>";
+        }
+        slots.forEach(function (slot, i) {
+            if (slot.startMinute % 60 === 0 && (slot.startMinute / 60) % 2 === 1) {
+                s += '<text x="' + x(i) + '" y="' + (H - 10) + '" font-size="12" fill="var(--muted)" text-anchor="middle">' + (slot.startMinute / 60) + ":00</text>";
+            }
+            if (slot.demand !== null && slot.demand > 0) {
+                const cls = LEVEL_CLASS[slot.level] || "lv0";
+                s += '<rect x="' + (x(i) + bw * 0.18) + '" y="' + y(slot.demand) + '" width="' + (bw * 0.64) + '" height="' + (y(0) - y(slot.demand)) + '" rx="2" fill="var(--' + cls + '-bar)"/>';
+            }
+        });
+        // 定員は枠ごとに段になる線で描く
+        let path = "";
+        slots.forEach(function (slot, i) {
+            path += (i === 0 ? "M" : "L") + x(i) + " " + y(slot.capacity) + " L" + x(i + 1) + " " + y(slot.capacity) + " ";
+        });
+        s += '<path d="' + path + '" fill="none" stroke="var(--capacity)" stroke-width="1.5" stroke-dasharray="5 4"/>';
+        slots.forEach(function (slot, i) {
+            if (slot.actualDemand !== null) {
+                s += '<circle cx="' + (x(i) + bw / 2) + '" cy="' + y(slot.actualDemand) + '" r="3.5" fill="var(--actual)"/>';
+            }
+        });
+        if (nowMinute !== null && n > 0) {
+            const first = slots[0].startMinute;
+            const last = slots[n - 1].startMinute + 30;
+            if (nowMinute >= first && nowMinute <= last) {
+                const nx = L + (W - L - R) * (nowMinute - first) / (last - first);
+                s += '<line x1="' + nx + '" x2="' + nx + '" y1="' + T + '" y2="' + (H - B) + '" stroke="var(--now)" stroke-width="2"/>';
+            }
+        }
+        s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(0) + '" y2="' + y(0) + '" stroke="var(--line-strong)"/>';
+        s += '<rect class="hit" x="' + L + '" y="' + T + '" width="' + (W - L - R) + '" height="' + (H - T - B) + '" fill="transparent"/>';
+        s += "</svg>";
+        return s;
+    }
+
+    function attachTooltip(wrap, dir, inbound) {
+        const svg = wrap.querySelector("svg");
+        const tip = wrap.querySelector(".tooltip");
+        const slots = dir.slots;
+        svg.addEventListener("mousemove", function (event) {
+            const rect = svg.getBoundingClientRect();
+            const vx = (event.clientX - rect.left) / rect.width * 1000;
+            const i = Math.floor((vx - 52) / ((1000 - 52 - 16) / slots.length));
+            if (i < 0 || i >= slots.length) { tip.style.display = "none"; return; }
+            const slot = slots[i];
+            let html = "<b>" + hm(slot.start) + "–" + hm(slot.end) + (inbound ? " に到着" : " に出発") + "</b>";
+            if (inbound) html += "湘南台発 " + hm(slot.busWindow.start) + "–" + hm(slot.busWindow.end) + "<br>";
+            html += "予想需要 " + num(slot.demand) + "人 / 定員 " + num(slot.capacity) + "人（" + slot.buses + "便）";
+            if (slot.actualDemand !== null) html += "<br>実測から " + num(slot.actualDemand) + "人";
+            if (slot.loadPercentage !== null) html += "<br>" + slot.label + "（" + slot.loadPercentage + "%）";
+            tip.innerHTML = html;
+            tip.style.display = "block";
+            const px = event.clientX - wrap.getBoundingClientRect().left;
+            tip.style.left = Math.min(px + 12, wrap.clientWidth - tip.offsetWidth) + "px";
+            tip.style.top = "8px";
+        });
+        svg.addEventListener("mouseleave", function () { tip.style.display = "none"; });
+    }
+
+    /* ---------- 表示 ---------- */
+    function peakKpi(title, dir) {
+        if (!dir.available) {
+            return '<div class="kpi"><div class="label">' + title + '</div><div class="value none">—</div><div class="note">時刻表を取得できませんでした</div></div>';
+        }
+        if (!dir.peak) {
+            return '<div class="kpi"><div class="label">' + title + '</div><div class="value none">—</div><div class="note">この日は目立つ需要がありません</div></div>';
+        }
+        return '<div class="kpi"><div class="label">' + title + '</div>' +
+            '<div class="value">' + dir.peak.loadPercentage + '<small>%</small></div>' +
+            '<div class="note">' + hm(dir.peak.start) + "–" + hm(dir.peak.end) + " " + chip(dir.peak.level, dir.peak.label) + "</div></div>";
+    }
+
+    function totalKpi(title, dir) {
+        return '<div class="kpi"><div class="label">' + title + '</div>' +
+            '<div class="value' + (dir.totalDemand === null ? " none" : "") + '">' + num(dir.totalDemand) + '<small>人</small></div>' +
+            '<div class="note">30分ごとの人数変化の合計 × 利用率</div></div>';
+    }
+
+    function slotState(slot, data) {
+        if (data.date !== data.campus.today) return data.date < data.campus.today ? "past" : "";
+        const now = data.campus.nowMinute;
+        if (slot.startMinute + 30 <= now) return "past";
+        if (slot.startMinute <= now) return "now";
+        return "";
+    }
+
+    function directionCard(key, title, sub, data) {
+        const dir = data[key];
+        const inbound = key === "toSfc";
+        if (!dir.available) {
+            return '<section class="card"><h2>' + title + '</h2><div class="empty">この日の時刻表を取得できませんでした。</div></section>';
+        }
+        const rows = dir.slots.filter(function (slot) {
+            return slot.buses > 0 || (slot.demand || 0) > 0 || (slot.actualDemand || 0) > 0;
+        });
+        let table = '<div class="table-scroll"><table class="bus"><thead><tr>' +
+            "<th>" + (inbound ? "SFC到着" : "SFC発") + "</th>" +
+            (inbound ? "<th>湘南台発</th>" : "") +
+            '<th class="times">対象の便</th><th>定員</th><th>予想需要</th><th>1便あたり</th><th>実測から</th><th>混雑</th>' +
+            "</tr></thead><tbody>";
+        rows.forEach(function (slot) {
+            const times = slot.departures.map(function (d) { return hm(d.time) + " " + esc(d.route); }).join("、");
+            table += '<tr class="' + slotState(slot, data) + '">' +
+                "<td>" + hm(slot.start) + "–" + hm(slot.end) + "</td>" +
+                (inbound ? "<td>" + hm(slot.busWindow.start) + "–" + hm(slot.busWindow.end) + "</td>" : "") +
+                '<td class="times">' + (times || "便なし") + "</td>" +
+                "<td>" + num(slot.capacity) + "</td>" +
+                "<td>" + num(slot.demand) + "</td>" +
+                "<td>" + num(slot.perBus) + "</td>" +
+                "<td>" + num(slot.actualDemand) + "</td>" +
+                "<td>" + chip(slot.level, slot.loadPercentage !== null ? slot.label + " " + slot.loadPercentage + "%" : slot.label) + "</td>" +
+                "</tr>";
+        });
+        table += "</tbody></table></div>";
+        const nowMinute = data.date === data.campus.today ? data.campus.nowMinute : null;
+        return '<section class="card" id="card-' + key + '"><h2>' + title + "</h2>" +
+            '<p class="sub">' + sub + "</p>" +
+            '<div class="chart-wrap">' + busChart(dir, nowMinute, title + "の予想需要と定員") + '<div class="tooltip"></div></div>' +
+            '<div class="legend"><span><i class="bar"></i>予想需要（色は混雑度）</span><span><i class="cap"></i>その枠の便の定員合計</span><span><i class="act"></i>実測の人数変化から</span>' +
+            (nowMinute !== null ? '<span><i class="n"></i>いま</span>' : "") + "</div>" +
+            table + "</section>";
+    }
+
+    function render(data) {
+        const app = document.getElementById("app");
+        const date = data.date;
+        const campus = data.campus;
+        document.getElementById("updated").textContent = "更新 " + timeOf(new Date().toISOString());
+        document.getElementById("modelLine").textContent = basisLabel(campus.forecastInfo);
+
+        const tag = date === campus.today ? "今日" : "";
+        let html = '<div class="day-nav">' +
+            '<a class="btn" href="/bus/' + addDays(date, -1) + '">← ' + label(addDays(date, -1)) + "</a>" +
+            "<h2>" + label(date) + '<span class="tag">' + esc([tag, weekTag(campus.calendar)].filter(Boolean).join("・")) + "</span></h2>" +
+            '<a class="btn" href="/bus/' + addDays(date, 1) + '">' + label(addDays(date, 1)) + " →</a>" +
+            "</div>";
+
+        html += '<div class="controls"><label for="share">バス利用率</label>' +
+            '<input type="range" id="share" min="0.1" max="1" step="0.05" value="' + busShare + '">' +
+            '<output id="shareOut">' + Math.round(busShare * 100) + "%</output>" +
+            '<span>移動した人のうちバスに乗る割合</span>' +
+            (date !== campus.today ? '<a href="/bus">今日に戻る</a>' : "") + "</div>";
+
+        if (!campus.forecast && !campus.actual) {
+            html += '<div class="card empty">この日の人数予報がまだありません。</div>';
+            app.innerHTML = html;
+            bindControls(date);
+            return;
+        }
+
+        html += '<div class="kpis">' +
+            peakKpi("湘南台 → SFC の最混雑", data.toSfc) +
+            peakKpi("SFC → 湘南台 の最混雑", data.toShonandai) +
+            totalKpi("湘南台 → SFC の利用者", data.toSfc) +
+            totalKpi("SFC → 湘南台 の利用者", data.toShonandai) +
+            "</div>";
+
+        html += directionCard("toSfc", "湘南台 → SFC",
+            "キャンパス人数が増えた分を到着とみなし、到着の" + data.assumptions.travelMinutes + "分前に湘南台を出る便に割り当てています。", data);
+        html += directionCard("toShonandai", "SFC → 湘南台",
+            "キャンパス人数が減った分を出発とみなし、同じ30分に SFC を出る便に割り当てています。", data);
+
+        html += '<div class="notice">見積もりの前提<ul>' +
+            "<li>30分ごとの人数の<b>差し引き</b>を使うため、同じ時間に来る人と帰る人がいると両方とも少なめに出ます（昼休みなど）。</li>" +
+            "<li>バス以外（徒歩・自転車・車・辻堂方面の便）の割合は、上のバス利用率でまとめて扱っています。</li>" +
+            "<li>定員は系統ごとの目安（湘25 は連節バス）です。途中のバス停での乗り降りは考えていません。</li>" +
+            "</ul></div>";
+
+        app.innerHTML = html;
+        [["toSfc", true], ["toShonandai", false]].forEach(function (pair) {
+            const card = document.getElementById("card-" + pair[0]);
+            if (card && data[pair[0]].available) attachTooltip(card.querySelector(".chart-wrap"), data[pair[0]], pair[1]);
+        });
+        bindControls(date);
+    }
+
+    function bindControls(date) {
+        const input = document.getElementById("share");
+        const out = document.getElementById("shareOut");
+        if (!input) return;
+        input.addEventListener("input", function () { out.textContent = Math.round(Number(input.value) * 100) + "%"; });
+        input.addEventListener("change", function () {
+            busShare = Number(input.value);
+            saveShare(busShare);
+            load(date);
+        });
+    }
+
+    async function load(date) {
+        clearTimeout(refreshTimer);
+        try {
+            const data = await getJson("/api/bus/day/" + date + "?busShare=" + busShare);
+            render(data);
+            if (date === data.campus.today) refreshTimer = setTimeout(function () { load(date); }, REFRESH_MS);
+        } catch (error) {
+            document.getElementById("app").innerHTML = '<div class="card"><div class="error">読み込めませんでした：' + esc(error.message) + "</div></div>";
+        }
+    }
+
+    const match = location.pathname.match(/^\/bus\/(\d{4}-\d{2}-\d{2})$/);
+    load(match ? match[1] : tokyoToday());
+    </script>
+</body>
+</html>

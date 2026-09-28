@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>キャンパス人数（アーカイブ）</title>
+    <style>
+        :root {
+            --text: #1f2937;
+            --muted: #6b7280;
+            --faint: #9ca3af;
+            --line: #e5e7eb;
+            --line-strong: #d1d5db;
+            --soft: #f3f4f6;
+            --softer: #f9fafb;
+            --page: #f6f7f9;
+            --card: #ffffff;
+            --actual: #1f2937;
+            --forecast: #2563eb;
+            --now: #dc2626;
+            --shade-1: #dbeafe;
+            --shade-2: #93c5fd;
+            --shade-3: #2563eb;
+            --pos: #b91c1c;
+            --neg: #1d4ed8;
+            --lv1-bg: #dcfce7; --lv1-fg: #166534;
+            --lv2-bg: #fef9c3; --lv2-fg: #854d0e;
+            --lv3-bg: #ffedd5; --lv3-fg: #9a3412;
+            --lv4-bg: #fee2e2; --lv4-fg: #991b1b;
+            --lv0-bg: #e5e7eb; --lv0-fg: #374151;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, "Hiragino Sans", sans-serif;
+            line-height: 1.6;
+            color: var(--text);
+            background-color: var(--page);
+        }
+        a { color: var(--forecast); }
+        header.top {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 8px;
+            max-width: 1120px;
+            margin: 0 auto;
+            padding: 20px 24px 0;
+        }
+        header.top h1 { margin: 0; font-size: 1.5em; }
+        header.top h1 a { color: inherit; text-decoration: none; }
+        header.top .meta { color: var(--muted); font-size: 0.9em; }
+        header.top .meta a { margin-left: 12px; }
+        .model-line { max-width: 1120px; margin: 4px auto 0; padding: 0 24px; color: var(--muted); font-size: 0.82em; }
+        .stage {
+            display: inline-block;
+            padding: 0 8px;
+            border-radius: 999px;
+            background-color: var(--soft);
+            color: var(--text);
+            font-weight: bold;
+        }
+        main { max-width: 1120px; margin: 0 auto; padding: 0 24px 64px; }
+        .card {
+            margin-top: 16px;
+            padding: 18px 20px;
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            background-color: var(--card);
+        }
+        .card h2 { margin: 0 0 4px; font-size: 1.1em; }
+        .card h2 .dim { font-weight: normal; color: var(--muted); font-size: 0.8em; }
+        .card .sub { margin: 0 0 12px; color: var(--muted); font-size: 0.85em; }
+        .grid-2 { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+        .empty { padding: 24px; color: var(--muted); text-align: center; }
+        .error { padding: 16px; border-radius: 8px; background-color: var(--lv4-bg); color: var(--lv4-fg); }
+
+        .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 16px; }
+        .kpi { padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background-color: var(--card); }
+        .kpi .label { color: var(--muted); font-size: 0.82em; }
+        .kpi .value { font-size: 1.8em; font-weight: bold; line-height: 1.2; font-variant-numeric: tabular-nums; }
+        .kpi .value small { font-size: 0.5em; font-weight: normal; color: var(--muted); margin-left: 2px; }
+        .kpi .value.none { color: var(--faint); }
+        .kpi .note { color: var(--muted); font-size: 0.8em; }
+        .shade-chip { display: inline-block; padding: 0 8px; border-radius: 999px; font-size: 0.75em; font-weight: bold; vertical-align: 2px; }
+        .s1 { background-color: var(--shade-1); color: #1e3a8a; }
+        .s2 { background-color: var(--shade-2); color: #1e3a8a; }
+        .s3 { background-color: var(--shade-3); color: #ffffff; }
+
+        .chart-wrap { position: relative; }
+        .chart-wrap svg { display: block; width: 100%; height: auto; }
+        .legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 6px; color: var(--muted); font-size: 0.82em; }
+        .legend i { display: inline-block; width: 22px; height: 0; margin-right: 6px; vertical-align: 4px; border-top: 2.5px solid; }
+        .legend i.a { border-color: var(--actual); }
+        .legend i.f { border-color: var(--forecast); border-top-style: dashed; }
+        .legend i.n { border-color: var(--now); width: 2px; height: 12px; border-top: none; border-left: 2px solid var(--now); vertical-align: -1px; }
+        .tooltip {
+            position: absolute;
+            pointer-events: none;
+            padding: 6px 10px;
+            border: 1px solid var(--line-strong);
+            border-radius: 8px;
+            background-color: #ffffff;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            font-size: 0.82em;
+            line-height: 1.5;
+            white-space: nowrap;
+            display: none;
+            font-variant-numeric: tabular-nums;
+        }
+        .tooltip b { display: block; }
+
+        table.list { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+        table.list th { padding: 6px 8px; border-bottom: 1px solid var(--line-strong); color: var(--muted); font-size: 0.8em; font-weight: normal; text-align: left; }
+        table.list td { padding: 5px 8px; border-bottom: 1px solid var(--line); font-size: 0.9em; }
+        table.list tr.row { cursor: pointer; }
+        table.list tr.row:hover td { background-color: var(--softer); }
+        table.list tr.closed td { color: var(--faint); }
+        table.list tr.week-start td { border-top: 2px solid var(--line-strong); }
+        .peakbar { display: flex; align-items: center; gap: 8px; }
+        .peakbar .bar { height: 10px; border-radius: 3px; background-color: var(--shade-2); }
+        .peakbar span { min-width: 4.2em; text-align: right; }
+        .spark { display: block; width: 120px; height: 22px; }
+        .list-scroll { max-height: 520px; overflow-y: auto; }
+
+        .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+        .cal .dow { color: var(--muted); font-size: 0.75em; text-align: center; }
+        .cal .day {
+            position: relative;
+            min-height: 46px;
+            padding: 3px 5px;
+            border-radius: 6px;
+            background-color: var(--soft);
+            color: var(--text);
+            font-size: 0.75em;
+            line-height: 1.25;
+            text-decoration: none;
+            font-variant-numeric: tabular-nums;
+        }
+        .cal .day:hover { outline: 2px solid var(--forecast); }
+        .cal .day.today { outline: 2px solid var(--now); }
+        .cal .day .d { font-weight: bold; }
+        .cal .day .p { display: block; margin-top: 2px; }
+        .cal .day.closed { background-color: var(--softer); color: var(--faint); }
+        .cal .day.future { background-image: repeating-linear-gradient(135deg, transparent 0 6px, rgba(255,255,255,0.35) 6px 9px); }
+        .cal .month { grid-column: 1 / -1; margin-top: 6px; font-weight: bold; font-size: 0.85em; }
+        .cal .blank { min-height: 46px; }
+        .scale { display: flex; align-items: center; gap: 6px; margin-top: 10px; color: var(--muted); font-size: 0.78em; flex-wrap: wrap; }
+        .scale span.sw { display: inline-block; width: 16px; height: 12px; border-radius: 3px; }
+
+        .bus-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .bus-dir h3 { margin: 0 0 8px; font-size: 0.95em; }
+        .bus-now {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            border-radius: 8px;
+            background-color: var(--softer);
+            font-size: 0.88em;
+        }
+        .chip { display: inline-block; padding: 1px 10px; border-radius: 999px; font-size: 0.82em; font-weight: bold; white-space: nowrap; }
+        .lv1 { background-color: var(--lv1-bg); color: var(--lv1-fg); }
+        .lv2 { background-color: var(--lv2-bg); color: var(--lv2-fg); }
+        .lv3 { background-color: var(--lv3-bg); color: var(--lv3-fg); }
+        .lv4 { background-color: var(--lv4-bg); color: var(--lv4-fg); }
+        .lv0 { background-color: var(--lv0-bg); color: var(--lv0-fg); }
+        table.bus { width: 100%; border-collapse: collapse; font-size: 0.85em; font-variant-numeric: tabular-nums; }
+        table.bus th { color: var(--muted); font-weight: normal; text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--line-strong); }
+        table.bus td { text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+        table.bus th:first-child, table.bus td:first-child { text-align: left; }
+        table.bus td:last-child, table.bus th:last-child { text-align: center; }
+        .caveat { margin-top: 8px; color: var(--muted); font-size: 0.78em; }
+
+        .day-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 16px; }
+        .day-nav h2 { margin: 0; font-size: 1.35em; }
+        .day-nav .tag { margin-left: 8px; color: var(--muted); font-size: 0.6em; font-weight: normal; }
+        .btn { display: inline-block; padding: 6px 12px; border: 1px solid var(--line-strong); border-radius: 8px; background-color: #ffffff; color: var(--text); text-decoration: none; font-size: 0.88em; }
+        .btn:hover { background-color: var(--softer); }
+        .notice { margin-top: 12px; padding: 8px 12px; border-left: 4px solid var(--faint); background-color: var(--softer); color: var(--muted); font-size: 0.88em; }
+
+        @media (max-width: 900px) {
+            .grid-2, .bus-grid { grid-template-columns: 1fr; }
+            .kpis { grid-template-columns: 1fr 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <header class="top">
+        <h1><a href="/archive">SFCキャンパス人数 <span style="font-size:0.55em;color:var(--muted);font-weight:normal">アーカイブ（M7・実データ）</span></a></h1>
+        <div class="meta">
+            <span id="updated"></span>
+            <a href="/bus">バス混雑予報</a>
+            <a href="/">見本（トップ）</a>
+            <a href="/newabout">予報のしくみ</a>
+            <a href="/old">旧ダッシュボード</a>
+        </div>
+    </header>
+    <div class="model-line" id="modelLine"></div>
+    <main id="app"><div class="card empty">読み込み中…</div></main>
+
+    <script>
+    const DOW_JA = ["日", "月", "火", "水", "木", "金", "土"];
+    const SHADE_LABEL = { 1: "少なめ", 2: "ふつう", 3: "多め" };
+    const SHADE_COLOR = { 1: "var(--shade-1)", 2: "var(--shade-2)", 3: "var(--shade-3)" };
+    const LEVEL_CLASS = { low: "lv1", moderate: "lv2", crowded: "lv3", over_capacity: "lv4", unavailable: "lv0" };
+    const REFRESH_MS = 5 * 60 * 1000;
+    let refreshTimer = null;
+
+    /* ---------- ユーティリティ ---------- */
+    function parseDate(s) { const p = s.split("-").map(Number); return new Date(Date.UTC(p[0], p[1] - 1, p[2])); }
+    function addDays(s, n) { const d = parseDate(s); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+    function label(s) { const d = parseDate(s); return (d.getUTCMonth() + 1) + "/" + d.getUTCDate() + "(" + DOW_JA[d.getUTCDay()] + ")"; }
+    function minToStr(m) { return Math.floor(m / 60) + ":" + String(m % 60).padStart(2, "0"); }
+    function num(v) { return v === null || v === undefined ? "—" : Math.round(v).toLocaleString(); }
+    function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+    function timeOf(iso) {
+        return new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
+    }
+    function weekTag(cal) {
+        if (!cal || cal.status === "unknown") return "学事暦を取得できませんでした";
+        if (cal.status === "closed") return cal.reason || "授業なし";
+        return "第" + cal.week + "週";
+    }
+    function shadeOf(value, scale) {
+        if (!scale || value === null || value === undefined) return null;
+        return value >= scale.t2 ? 3 : value >= scale.t1 ? 2 : 1;
+    }
+    function basisLabel(forecast) {
+        if (!forecast) return "";
+        return forecast.basis === "day_before"
+            ? "前日までに作った予報（" + timeOf(forecast.issuedAt) + "）"
+            : "当日に作った予報（" + timeOf(forecast.issuedAt) + "）";
+    }
+    async function getJson(url) {
+        const res = await fetch(url);
+        const body = await res.json().catch(function () { return {}; });
+        if (!res.ok) throw new Error(body.error || ("HTTP " + res.status));
+        return body;
+    }
+
+    /* ---------- グラフ ---------- */
+    function lineChart(bins, forecast, actual, opts) {
+        const W = 1000, H = opts.height || 300, L = 52, R = 16, T = 18, B = 30;
+        const n = bins.length;
+        const x = function (i) { return L + (W - L - R) * (i + 0.5) / n; };
+        const values = (forecast || []).concat((actual || []).filter(function (v) { return v !== null; }));
+        const maxV = values.length ? Math.max.apply(null, values) : 0;
+        // 目盛りがきりのいい数になるよう、上端を「刻み × 4」の倍数にそろえる
+        const target = Math.max(maxV * 1.12, 100) / 4;
+        const step = [25, 50, 100, 250, 500, 1000].find(function (s) { return s >= target; }) || 1000;
+        const top = step * 4;
+        const y = function (v) { return T + (H - T - B) * (1 - v / top); };
+        let s = '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="' + esc(opts.aria || "人数の推移") + '">';
+        for (let i = 0; i <= 4; i += 1) {
+            const v = Math.round(top * i / 4);
+            s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="var(--line)"/>';
+            s += '<text x="' + (L - 8) + '" y="' + (y(v) + 4) + '" font-size="12" fill="var(--muted)" text-anchor="end">' + v.toLocaleString() + "</text>";
+        }
+        for (let i = 0; i < n; i += 4) {
+            s += '<text x="' + x(i) + '" y="' + (H - 8) + '" font-size="12" fill="var(--muted)" text-anchor="middle">' + minToStr(bins[i]) + "</text>";
+        }
+        if (opts.nowMinute != null && opts.nowMinute >= bins[0] && opts.nowMinute <= bins[n - 1] + 30) {
+            const nx = L + (W - L - R) * (opts.nowMinute - bins[0]) / (30 * n);
+            s += '<rect x="' + L + '" y="' + T + '" width="' + (nx - L) + '" height="' + (H - T - B) + '" fill="var(--softer)"/>';
+            s += '<line x1="' + nx + '" x2="' + nx + '" y1="' + T + '" y2="' + (H - B) + '" stroke="var(--now)" stroke-width="1.5"/>';
+            s += '<text x="' + (nx + 6) + '" y="' + (T + 12) + '" font-size="12" fill="var(--now)">いま ' + minToStr(opts.nowMinute) + "</text>";
+        }
+        const path = function (arr) {
+            let p = "", pen = false;
+            arr.forEach(function (v, i) {
+                if (v === null || v === undefined) { pen = false; return; }
+                p += (pen ? " L" : " M") + x(i).toFixed(1) + "," + y(v).toFixed(1);
+                pen = true;
+            });
+            return p;
+        };
+        if (forecast) s += '<path d="' + path(forecast) + '" fill="none" stroke="var(--forecast)" stroke-width="2.5" stroke-dasharray="7 5"/>';
+        if (actual) s += '<path d="' + path(actual) + '" fill="none" stroke="var(--actual)" stroke-width="2.5"/>';
+        if (forecast) {
+            let pk = 0;
+            forecast.forEach(function (v, i) { if (v > forecast[pk]) pk = i; });
+            const labelTop = Math.min(y(forecast[pk]), actual && actual[pk] != null ? y(actual[pk]) : Infinity);
+            s += '<circle cx="' + x(pk) + '" cy="' + y(forecast[pk]) + '" r="4" fill="var(--forecast)"/>';
+            s += '<text x="' + x(pk) + '" y="' + Math.max(12, labelTop - 12) + '" font-size="12" fill="var(--forecast)" text-anchor="middle">予報ピーク ' + forecast[pk].toLocaleString() + "人</text>";
+        }
+        s += '<rect class="hit" x="' + L + '" y="' + T + '" width="' + (W - L - R) + '" height="' + (H - T - B) + '" fill="transparent"/>';
+        s += '<line class="cursor" x1="0" x2="0" y1="' + T + '" y2="' + (H - B) + '" stroke="var(--faint)" stroke-dasharray="3 3" visibility="hidden"/>';
+        return { svg: s + "</svg>", geom: { W: W, L: L, R: R, n: n } };
+    }
+    function attachTooltip(wrap, bins, forecast, actual, geom) {
+        const svg = wrap.querySelector("svg");
+        const tip = wrap.querySelector(".tooltip");
+        const hit = svg.querySelector(".hit");
+        const cursor = svg.querySelector(".cursor");
+        hit.addEventListener("mousemove", function (ev) {
+            const pt = svg.createSVGPoint();
+            pt.x = ev.clientX; pt.y = ev.clientY;
+            const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+            const i = Math.max(0, Math.min(geom.n - 1, Math.floor((p.x - geom.L) / ((geom.W - geom.L - geom.R) / geom.n))));
+            const cx = geom.L + (geom.W - geom.L - geom.R) * (i + 0.5) / geom.n;
+            cursor.setAttribute("x1", cx); cursor.setAttribute("x2", cx); cursor.setAttribute("visibility", "visible");
+            const f = forecast ? forecast[i] : null;
+            const a = actual ? actual[i] : null;
+            let html = "<b>" + minToStr(bins[i]) + "〜</b>";
+            html += "予報 " + (f === null ? "—" : f.toLocaleString() + "人");
+            if (a !== null && a !== undefined) {
+                html += "<br>実測 " + a.toLocaleString() + "人";
+                if (f !== null) html += "<br>誤差 " + (a - f > 0 ? "+" : "") + (a - f).toLocaleString() + "人";
+            }
+            tip.innerHTML = html;
+            tip.style.display = "block";
+            const rect = wrap.getBoundingClientRect();
+            let left = ev.clientX - rect.left + 14;
+            if (left > rect.width - 140) left = ev.clientX - rect.left - 140;
+            tip.style.left = left + "px";
+            tip.style.top = (ev.clientY - rect.top - 10) + "px";
+        });
+        hit.addEventListener("mouseleave", function () { tip.style.display = "none"; cursor.setAttribute("visibility", "hidden"); });
+    }
+    function errorChart(bins, forecast, actual) {
+        const W = 1000, H = 120, L = 52, R = 16, T = 10, B = 22;
+        const n = bins.length, bw = (W - L - R) / n;
+        const errs = actual.map(function (v, i) { return v === null ? null : v - forecast[i]; });
+        const valid = errs.filter(function (v) { return v !== null; });
+        if (valid.length === 0) return '<div class="empty">まだ実測がありません。</div>';
+        const m = Math.max(50, Math.max.apply(null, valid.map(Math.abs)));
+        const mid = T + (H - T - B) / 2, sc = (H - T - B) / 2 / m;
+        let s = '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="30分ごとの誤差">';
+        s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + mid + '" y2="' + mid + '" stroke="var(--line-strong)"/>';
+        s += '<text x="' + (L - 8) + '" y="' + (T + 10) + '" font-size="11" fill="var(--muted)" text-anchor="end">+' + Math.round(m) + "</text>";
+        s += '<text x="' + (L - 8) + '" y="' + (H - B) + '" font-size="11" fill="var(--muted)" text-anchor="end">−' + Math.round(m) + "</text>";
+        errs.forEach(function (e, i) {
+            if (e === null) return;
+            const h = Math.abs(e) * sc;
+            s += '<rect x="' + (L + i * bw + 2).toFixed(1) + '" y="' + (e >= 0 ? mid - h : mid).toFixed(1) + '" width="' + (bw - 4).toFixed(1) + '" height="' + Math.max(1, h).toFixed(1) + '" rx="2" fill="' + (e >= 0 ? "var(--pos)" : "var(--neg)") + '" opacity="0.8"><title>' + minToStr(bins[i]) + " 実測−予報 " + (e > 0 ? "+" : "") + e + "人</title></rect>";
+        });
+        for (let i = 0; i < n; i += 4) {
+            s += '<text x="' + (L + (i + 0.5) * bw) + '" y="' + (H - 6) + '" font-size="11" fill="var(--muted)" text-anchor="middle">' + minToStr(bins[i]) + "</text>";
+        }
+        return s + "</svg>";
+    }
+    function sparkline(values, max) {
+        const pts = values.map(function (v, i) { return (i * 120 / (values.length - 1)).toFixed(1) + "," + (21 - v / max * 20).toFixed(1); }).join(" ");
+        return '<svg class="spark" viewBox="0 0 120 22" preserveAspectRatio="none"><polyline points="' + pts + '" fill="none" stroke="var(--forecast)" stroke-width="1.5"/></svg>';
+    }
+
+    /* ---------- 部品 ---------- */
+    function chip(crowding) {
+        if (!crowding) return '<span class="chip lv0">—</span>';
+        const pct = crowding.loadPercentage != null ? " " + crowding.loadPercentage + "%" : "";
+        return '<span class="chip ' + (LEVEL_CLASS[crowding.level] || "lv0") + '">' + esc(crowding.label) + pct + "</span>";
+    }
+    function busTable(rows, key) {
+        let html = '<table class="bus"><tr><th>時間帯</th><th>本数</th><th>輸送力</th><th>需要の目安</th><th>混み具合</th></tr>';
+        let any = false;
+        rows.forEach(function (r) {
+            const x = r[key];
+            if (!x) return;
+            any = true;
+            const c = x.crowding;
+            html += "<tr><td>" + r.hour + ":00〜</td><td>" + x.buses + "本</td><td>" + num(c.transportCapacity) + "人</td><td>" +
+                (c.predictedDemand == null ? "—" : "約" + num(c.predictedDemand) + "人") + "</td><td>" + chip(c) + "</td></tr>";
+        });
+        if (!any) return '<div class="empty">この時間帯の目安はありません。</div>';
+        return html + "</table>";
+    }
+    function busSection(outlook, fromHour, toHour, now) {
+        if (!outlook) return '<div class="empty">予報がないため、バスの目安を計算できません。</div>';
+        const rows = outlook.rows.filter(function (r) { return r.hour >= fromHour && r.hour <= toHour; });
+        function dir(key, title, nowCrowding) {
+            let html = '<div class="bus-dir"><h3>' + title + "</h3>";
+            if (now !== undefined) {
+                html += '<div class="bus-now"><span>いま（現行の計算）' +
+                    (nowCrowding && nowCrowding.predictedDemand != null
+                        ? "　需要 約" + num(nowCrowding.predictedDemand) + "人 ／ 輸送力 " + num(nowCrowding.transportCapacity) + "人"
+                        : "") +
+                    "</span>" + chip(nowCrowding) + "</div>";
+            }
+            if (key === "toShonandai" && !outlook.outboundAvailable) {
+                return html + '<div class="empty">バスの時刻表を取得できませんでした。</div></div>';
+            }
+            return html + busTable(rows, key) + "</div>";
+        }
+        const a = outlook.assumptions;
+        return '<div class="bus-grid">' +
+            dir("toShonandai", "SFC → 湘南台（帰り）", now ? now.crowding : null) +
+            dir("toSfc", "湘南台 → SFC（来る）", now ? now.inboundCrowding : null) + "</div>" +
+            '<p class="caveat">需要の目安は、予報した人数に現行の式を当てはめたものです。帰り＝人数 × 帰宅率 ' + a.departureRate + " × バス利用率 " + a.busUseRate +
+            "、来る＝次の1時間の人数の増加分。係数は仮置きで、正解データでは検証していません。輸送力＝時刻表の本数 × 定員。</p>";
+    }
+    function calendar(days, today, scale) {
+        let html = '<div class="cal">';
+        ["月", "火", "水", "木", "金", "土", "日"].forEach(function (w) { html += '<div class="dow">' + w + "</div>"; });
+        let month = -1;
+        days.forEach(function (day, idx) {
+            const dt = parseDate(day.date);
+            if (dt.getUTCMonth() !== month) {
+                if (month !== -1) {
+                    const prev = parseDate(days[idx - 1].date);
+                    const rest = 6 - ((prev.getUTCDay() + 6) % 7);
+                    for (let k = 0; k < rest; k += 1) html += '<div class="blank"></div>';
+                }
+                month = dt.getUTCMonth();
+                html += '<div class="month">' + (month + 1) + "月</div>";
+                const offset = (dt.getUTCDay() + 6) % 7;
+                for (let k = 0; k < offset; k += 1) html += '<div class="blank"></div>';
+            }
+            const isPast = day.date < today;
+            const value = isPast && day.actualPeak !== null ? day.actualPeak : day.forecastPeak;
+            let cls = "day", style = "";
+            if (day.type !== "class") cls += " closed";
+            else {
+                const sh = shadeOf(value, scale);
+                if (sh) style = "background-color:" + SHADE_COLOR[sh] + ";" + (sh === 3 ? "color:#fff;" : "");
+            }
+            if (day.date > today) cls += " future";
+            if (day.date === today) cls += " today";
+            html += '<a class="' + cls + '" style="' + style + '" href="/archive/day/' + day.date + '" title="' + label(day.date) + " " + esc(weekTag(day.calendar)) + '">' +
+                '<span class="d">' + dt.getUTCDate() + "</span>" +
+                (value !== null && value !== undefined ? '<span class="p">' + num(value) + "</span>" : "") + "</a>";
+        });
+        html += "</div>";
+        html += '<div class="scale">色：<span class="sw" style="background:var(--shade-1)"></span>少なめ<span class="sw" style="background:var(--shade-2)"></span>ふつう<span class="sw" style="background:var(--shade-3)"></span>多め</div>' +
+            '<div class="scale">' + (scale ? "色の基準：" + (scale.basis === "actual" ? "過去の授業日の実測ピーク" : "今後1か月の予報ピーク") + "の三分位<br>" : "色の基準：データ不足のため色分けなし<br>") +
+            "数字：過去は実測ピーク、今日以降は予報ピーク／斜線：未来</div>";
+        return html;
+    }
+    function renderModelLine(model) {
+        let text = '予報モデル：<span class="stage">' + esc(model.stageLabel) + "</span>";
+        if (model.training) text += "　学習に使った日数：授業日 " + model.training.classDays + "日・授業のない日 " + model.training.closedDays + "日";
+        if (model.trainedAt) text += "　最終学習 " + timeOf(model.trainedAt);
+        if (model.forecasting) text += "　（予報を作成中…）";
+        document.getElementById("modelLine").innerHTML = text;
+    }
+
+    /* ---------- トップ ---------- */
+    async function renderHome() {
+        const results = await Promise.allSettled([getJson("/api/campus/overview"), getJson("/api/dashboard")]);
+        if (results[0].status !== "fulfilled") throw results[0].reason;
+        const o = results[0].value;
+        const dash = results[1].status === "fulfilled" ? results[1].value : null;
+        const today = o.days.find(function (d) { return d.date === o.today; }) || { forecast: null, actual: null, calendar: null, type: "closed" };
+        const f = today.forecast ? today.forecast.values : null;
+        const nowIdx = Math.floor((o.nowMinute - o.bins[0]) / 30);
+        const in1h = f && nowIdx + 2 >= 0 && nowIdx + 2 < f.length ? f[nowIdx + 2] : null;
+        const shade = today.type === "class" ? shadeOf(today.forecastPeak, o.colorScale) : null;
+
+        renderModelLine(o.model);
+        document.getElementById("updated").textContent = "最終更新 " + timeOf(o.generatedAt);
+
+        const chart = lineChart(o.bins, f, today.actual, { nowMinute: o.nowMinute, height: 320, aria: "今日の人数の推移" });
+        const maxPeak = Math.max.apply(null, o.days.map(function (d) { return d.forecastPeak || 0; }).concat([1]));
+
+        let list = "", lastWeek = null;
+        o.days.filter(function (d) { return d.date > o.today; }).forEach(function (d) {
+            const cls = ["row"];
+            if (d.type !== "class") cls.push("closed");
+            if (d.type === "class" && lastWeek !== null && d.calendar.week !== lastWeek) cls.push("week-start");
+            if (d.type === "class") lastWeek = d.calendar.week;
+            if (!d.forecast) {
+                list += '<tr class="' + cls.join(" ") + '" data-date="' + d.date + '"><td>' + label(d.date) + "</td><td>" + esc(weekTag(d.calendar)) + '</td><td colspan="3">予報なし</td></tr>';
+                return;
+            }
+            if (d.type !== "class") {
+                list += '<tr class="' + cls.join(" ") + '" data-date="' + d.date + '"><td>' + label(d.date) + "</td><td>" + esc(weekTag(d.calendar)) + '</td><td colspan="3">約' + num(d.forecastPeak) + "人（授業なし）</td></tr>";
+                return;
+            }
+            const sh = shadeOf(d.forecastPeak, o.colorScale);
+            list += '<tr class="' + cls.join(" ") + '" data-date="' + d.date + '"><td>' + label(d.date) + "</td><td>" + esc(weekTag(d.calendar)) + "</td>" +
+                '<td><div class="peakbar"><span>' + num(d.forecastPeak) + '人</span><div class="bar" style="width:' + Math.round(d.forecastPeak / maxPeak * 160) + "px;" + (sh ? "background:" + SHADE_COLOR[sh] : "") + '"></div></div></td>' +
+                "<td>" + minToStr(d.forecastPeakMinute) + "ごろ</td><td>" + sparkline(d.forecast.values, maxPeak) + "</td></tr>";
+        });
+
+        const currentHour = Math.floor(o.nowMinute / 60);
+        document.getElementById("app").innerHTML =
+            '<div class="kpis">' +
+                '<div class="kpi"><div class="label">いまの人数（実測）</div>' +
+                    (o.current ? '<div class="value">' + num(o.current.population) + '<small>人</small></div><div class="note">' + timeOf(o.current.measuredAt) + " の計測" + (o.current.quality !== "valid" ? "（" + esc(o.current.quality) + "）" : "") + "</div>"
+                               : '<div class="value none">—</div><div class="note">まだ計測がありません</div>') + "</div>" +
+                '<div class="kpi"><div class="label">1時間後（予報）</div>' +
+                    (in1h !== null ? '<div class="value">' + num(in1h) + '<small>人</small></div><div class="note">' + (o.current ? "いまより " + (in1h - o.current.population >= 0 ? "+" : "") + num(in1h - o.current.population) + "人" : "") + "</div>"
+                                   : '<div class="value none">—</div><div class="note">予報の範囲外です</div>') + "</div>" +
+                '<div class="kpi"><div class="label">今日のピーク（予報）</div>' +
+                    (today.forecastPeak !== null ? '<div class="value">' + num(today.forecastPeak) + '<small>人</small></div><div class="note">' + minToStr(today.forecastPeakMinute) + "ごろ" + (shade ? ' <span class="shade-chip s' + shade + '">' + SHADE_LABEL[shade] + "</span>" : "") + "</div>"
+                                                 : '<div class="value none">—</div><div class="note">予報を作成中です</div>') + "</div>" +
+                '<div class="kpi"><div class="label">予報の誤差（直近の授業日の平均）</div>' +
+                    (o.recentMae ? '<div class="value">±' + num(o.recentMae.value) + '<small>人</small></div><div class="note">直近' + o.recentMae.days + "授業日・前日までの予報と実測の差</div>"
+                                 : '<div class="value none">—</div><div class="note">比較できる授業日がまだありません</div>') + "</div>" +
+            "</div>" +
+            '<section class="card"><h2>今日の人数　' + label(o.today) + ' <span class="dim">' + esc(weekTag(today.calendar)) + "</span></h2>" +
+                '<p class="sub">30分ごと。グラフにマウスを乗せると値が出ます。' + esc(basisLabel(today.forecast)) + '　<a href="/archive/day/' + o.today + '">この日の詳細 →</a></p>' +
+                '<div class="chart-wrap" id="mainChart">' + chart.svg + '<div class="tooltip"></div></div>' +
+                '<div class="legend"><span><i class="a"></i>実測</span><span><i class="f"></i>予報</span><span><i class="n"></i>現在時刻</span></div>' +
+            "</section>" +
+            '<div class="grid-2">' +
+                '<section class="card"><h2>今後の予報</h2><p class="sub">1か月先まで。行をクリックすると日別ページへ移動します。</p>' +
+                    (list ? '<div class="list-scroll"><table class="list"><tr><th>日付</th><th>学期</th><th>ピーク人数</th><th>ピーク時刻</th><th>1日の形</th></tr>' + list + "</table></div>" : '<div class="empty">予報を作成中です。</div>') +
+                "</section>" +
+                '<section class="card"><h2>カレンダー</h2><p class="sub">過去の日も含めて、日付をクリックすると日別ページへ。</p>' + calendar(o.days, o.today, o.colorScale) + "</section>" +
+            "</div>" +
+            '<section class="card"><h2>バスの混雑（参考）</h2><p class="sub">キャンパス人数の予報と時刻表から計算した目安です。<a href="/bus">30分ごとの詳しい予報 →</a></p>' +
+                busSection(o.todayBus, currentHour, currentHour + 4, dash || null) + "</section>";
+
+        attachTooltip(document.getElementById("mainChart"), o.bins, f, today.actual, chart.geom);
+        document.querySelectorAll("tr.row").forEach(function (tr) {
+            tr.addEventListener("click", function () { location.href = "/archive/day/" + tr.dataset.date; });
+        });
+        // 予報の作成中は早めに読み直す
+        return o.model.forecasting || !today.forecast ? 15000 : REFRESH_MS;
+    }
+
+    /* ---------- 日別 ---------- */
+    async function renderDay(date) {
+        const d = await getJson("/api/campus/day/" + date);
+        renderModelLine(d.model);
+        document.getElementById("updated").textContent = "";
+        const isToday = date === d.today, isPast = date < d.today;
+        const f = d.forecast ? d.forecast.values : null;
+        const chart = lineChart(d.bins, f, d.actual, { nowMinute: isToday ? d.nowMinute : null, height: 340, aria: label(date) + "の人数の推移" });
+        const prev = addDays(date, -1), next = addDays(date, 1);
+        document.title = label(date) + " | キャンパス人数（アーカイブ）";
+
+        let kpis = '<div class="kpis">' +
+            '<div class="kpi"><div class="label">ピーク（予報）</div>' + (d.forecastPeak !== null ? '<div class="value">' + num(d.forecastPeak) + '<small>人</small></div><div class="note">' + minToStr(d.forecastPeakMinute) + "ごろ</div>" : '<div class="value none">—</div><div class="note">この日の予報はありません</div>') + "</div>" +
+            '<div class="kpi"><div class="label">ピーク（実測）</div>' + (d.actualPeak !== null ? '<div class="value">' + num(d.actualPeak) + '<small>人</small></div><div class="note">' + (isToday ? "いままでの最大" : "この日の最大") + "</div>" : '<div class="value none">—</div><div class="note">' + (isPast || isToday ? "実測がありません" : "まだ来ていない日です") + "</div>") + "</div>" +
+            '<div class="kpi"><div class="label">この日の平均誤差</div>' + (d.mae !== null ? '<div class="value">±' + num(d.mae) + '<small>人</small></div><div class="note">30分枠の誤差の絶対値の平均</div>' : '<div class="value none">—</div><div class="note">予報と実測の両方がそろうと表示</div>') + "</div>" +
+            '<div class="kpi"><div class="label">予報を作った時点</div>' + (d.forecast ? '<div class="value" style="font-size:1.2em;padding:6px 0">' + timeOf(d.forecast.issuedAt) + '</div><div class="note">' + (d.forecast.basis === "day_before" ? "前日までに作った予報" : "当日に作った予報") + "</div>" : '<div class="value none">—</div><div class="note"></div>') + "</div>" +
+            "</div>";
+
+        document.getElementById("app").innerHTML =
+            '<div class="day-nav">' +
+                '<a class="btn" href="/archive/day/' + prev + '">← ' + label(prev) + "</a>" +
+                "<h2>" + label(date) + '<span class="tag">' + esc(weekTag(d.calendar)) + (isToday ? "・今日" : isPast ? "・過去" : "・予報") + "</span></h2>" +
+                '<a class="btn" href="/archive/day/' + next + '">' + label(next) + " →</a>" +
+            "</div>" +
+            (d.type !== "class" ? '<div class="notice">学事暦ではこの日は「' + esc(weekTag(d.calendar)) + "」です。予報は授業以外の人（ベース）だけになります。</div>" : "") +
+            kpis +
+            '<section class="card"><h2>人数の推移</h2><p class="sub">' + (d.actual && f ? "実測（実線）と予報（点線）を重ねています。" : d.actual ? "実測（実線）のみ。この日の予報は残っていません。" : "予報（点線）のみ。当日になると実測が重なります。") + " " + esc(basisLabel(d.forecast)) + "</p>" +
+                (f || d.actual ? '<div class="chart-wrap" id="dayChart">' + chart.svg + '<div class="tooltip"></div></div>' +
+                    '<div class="legend"><span><i class="a"></i>実測</span><span><i class="f"></i>予報</span>' + (isToday ? '<span><i class="n"></i>現在時刻</span>' : "") + "</div>"
+                    : '<div class="empty">この日の予報も実測もありません。</div>') +
+            "</section>" +
+            (d.actual && f ? '<section class="card"><h2>30分ごとの誤差</h2><p class="sub">実測 − 予報。<span style="color:var(--pos)">赤</span>＝予報より多かった、<span style="color:var(--neg)">青</span>＝予報より少なかった。</p>' + errorChart(d.bins, f, d.actual) + "</section>" : "") +
+            (d.type === "class" ? '<section class="card"><h2>この日のバスの目安</h2><p class="sub">8時台〜19時台。キャンパス人数の予報と時刻表から計算。</p>' + busSection(d.bus, 8, 19) + "</section>" : "");
+
+        if (f || d.actual) attachTooltip(document.getElementById("dayChart"), d.bins, f, d.actual, chart.geom);
+    }
+
+    /* ---------- ルーティング ---------- */
+    async function route() {
+        clearTimeout(refreshTimer);
+        const m = location.pathname.match(/^\/archive\/day\/(\d{4}-\d{2}-\d{2})\/?$/);
+        try {
+            if (m) await renderDay(m[1]);
+            else refreshTimer = setTimeout(route, await renderHome());
+        } catch (error) {
+            document.getElementById("app").innerHTML = '<div class="card"><div class="error">データを取得できませんでした：' + esc(error.message) + "</div></div>";
+        }
+    }
+    route();
+    </script>
+</body>
+</html>
