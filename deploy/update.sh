@@ -16,13 +16,26 @@ set -euo pipefail
 main() {
   cd "$(dirname "$0")/.."
 
+  # まずコードを main にそろえ、そろえた後の update.sh で続きを動かす
+  # （このスクリプト自身の変更も、その回のデプロイから効くようにする）。
+  if [ -z "${CAMPUS_INFO_UPDATED:-}" ]; then
+    local saved
+    saved="$(mktemp)"
+    if [ ! -t 0 ]; then
+      cat > "$saved"
+    fi
+    echo "==> コードを main にそろえる"
+    git fetch --quiet origin main
+    git reset --hard --quiet origin/main
+    git log -1 --format='    %h %s'
+    CAMPUS_INFO_UPDATED=1 exec bash deploy/update.sh < "$saved"
+  fi
+
   echo "==> 設定を受け取る"
   local input
   input="$(mktemp)"
   trap 'rm -f "$input"' EXIT
-  if [ ! -t 0 ]; then
-    cat > "$input"
-  fi
+  cat > "$input"
 
   mkdir -p private-data
   local classrooms
@@ -44,11 +57,6 @@ main() {
     chmod 600 .env
     echo "    .env を更新しました"
   fi
-
-  echo "==> コードを main にそろえる"
-  git fetch --quiet origin main
-  git reset --hard --quiet origin/main
-  git log -1 --format='    %h %s'
 
   echo "==> コンテナを作り直す"
   docker compose up -d --build --remove-orphans
