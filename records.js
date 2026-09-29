@@ -227,6 +227,239 @@ export function createRecords(options) {
         };
     }
 
+    /* ---------- トップ画面（キャンパス人数）向け ---------- */
+
+    function binMinutes() {
+        const bins = [];
+        for (let minute = FIRST_BIN; minute <= LAST_BIN; minute += BIN_MINUTES) bins.push(minute);
+        return bins;
+    }
+
+    function addDays(date, days) {
+        const d = new Date(date + "T12:00:00+09:00");
+        d.setUTCDate(d.getUTCDate() + days);
+        return d.toISOString().slice(0, 10);
+    }
+
+    async function readLectures(date) {
+        const body = await readJson(path.join(dataDir, "lecture_snapshots", date + ".json")) ||
+            await readJson(path.join(dataDir, "lectures", date + ".json"));
+        return body ? body.data || body : null;
+    }
+
+    // 時間割の JSON は1日分でも大きいので、日の種類と学事暦だけを少しの間覚えておく。
+    const calendarCache = new Map();
+    const CALENDAR_TTL_MS = 10 * 60 * 1000;
+
+    /* 日の種類と学事暦（以前のトップ画面と同じ形）。 */
+    async function describeCalendar(date) {
+        const cached = calendarCache.get(date);
+        if (cached && Date.now() - cached.at < CALENDAR_TTL_MS) return cached.value;
+        const value = await readCalendarUncached(date);
+        calendarCache.set(date, { at: Date.now(), value: value });
+        return value;
+    }
+
+    async function readCalendarUncached(date) {
+        const lectures = await readLectures(date);
+        const cal = (lectures && lectures.calendar) || {};
+        const weekday = new Date(date + "T12:00:00+09:00").getUTCDay();
+        const closed = !lectures || cal.status === "closed";
+        return {
+            type: closed ? (weekday === 0 || weekday === 6 ? "closed_weekend" : "closed_weekday") : "class",
+            calendar: {
+                status: lectures ? cal.status || null : "unknown",
+                week: cal.semesterClassIndex || null,
+                effectiveDayCode: cal.effectiveDayCode || null,
+                reason: cal.reason || null
+            }
+        };
+    }
+
+    /*
+     * その日の LightGBM（B）の予報。今日と過去はその朝に出したもの（predictions_log）、
+     * それが無い日と明日以降は、最新の学習で出したもの（predictions.csv）。
+     */
+    async function forecastFor(date, today) {
+        const sources = date <= today
+            ? ["predictions_log.csv", "predictions.csv"]
+            : ["predictions.csv"];
+        const lastRun = await readJson(path.join(mlDir, "last_run.json"));
+        for (const file of sources) {
+            const rows = (await readCsvCached(path.join(mlDir, file)))
+                .filter(function (row) { return row.date === date; });
+            if (rows.length === 0) continue;
+            const byBin = new Map(rows.map(function (row) { return [row.bin_start, toNumber(row.pred_B)]; }));
+            const values = binMinutes().map(function (minute) {
+                const v = byBin.get(minuteToTime(minute));
+                return v === undefined || v === null ? null : Math.max(0, Math.round(v));
+            });
+            if (values.every(function (v) { return v === null; })) continue;
+            const issuedAt = rows[0].issued_at || (lastRun && lastRun.finishedAt) || null;
+            const issuedDate = issuedAt ? options.getTokyoDateString(new Date(issuedAt)) : today;
+            return {
+                values: values.map(function (v) { return v === null ? 0 : v; }),
+                issuedAt: issuedAt,
+                stage: "lightgbm",
+                basis: issuedDate < date ? "day_before" : "same_day"
+            };
+        }
+        return null;
+    }
+
+    function peakOf(values) {
+        let index = 0;
+        values.forEach(function (v, i) { if (v > values[index]) index = i; });
+        return { value: values[index], minute: binMinutes()[index] };
+    }
+
+    async function describeDays(dates, now) {
+        const today = options.getTokyoDateString(now);
+        const parts = options.getTokyoTimeParts(now);
+        const nowMinute = parts.hour * 60 + parts.minute;
+        const actualAll = actualByDate();
+        const bins = binMinutes();
+        const days = [];
+        for (const date of dates) {
+            const kind = await describeCalendar(date);
+            const forecast = await forecastFor(date, today);
+            const cells = date <= today ? actualAll.get(date) || null : null;
+            const actual = cells
+                ? bins.map(function (minute) {
+                    const cell = cells.get(minuteToTime(minute));
+                    return cell ? Math.round(cell.sum / cell.count) : null;
+                })
+                : null;
+            const actualValues = actual ? actual.filter(function (v) { return v !== null; }) : [];
+            const peak = forecast ? peakOf(forecast.values) : null;
+            let mae = null;
+            if (cells && forecast) {
+                const errors = [];
+                bins.forEach(function (minute, i) {
+                    const cell = cells.get(minuteToTime(minute));
+                    if (!cell || cell.count < MIN_SAMPLES) return;
+                    if (date === today && minute + BIN_MINUTES > nowMinute) return;
+                    errors.push(Math.abs(cell.sum / cell.count - forecast.values[i]));
+                });
+                if (errors.length > 0) mae = errors.reduce(function (a, b) { return a + b; }, 0) / errors.length;
+            }
+            days.push({
+                date: date,
+                type: kind.type,
+                calendar: kind.calendar,
+                forecast: forecast,
+                actual: actual,
+                forecastPeak: peak ? peak.value : null,
+                forecastPeakMinute: peak ? peak.minute : null,
+                actualPeak: actualValues.length > 0 ? Math.max.apply(null, actualValues) : null,
+                mae: mae
+            });
+        }
+        return days;
+    }
+
+    /* 学習に使った日数（正解のある日を、授業日と授業のない日に分けて数える）。 */
+    async function describeModel() {
+        const lastRun = await readJson(path.join(mlDir, "last_run.json"));
+        const table = await readCsvCached(path.join(mlDir, "training_table.csv"));
+        const classDays = new Set();
+        const closedDays = new Set();
+        table.forEach(function (row) {
+            if (Number(row.y_samples) < MIN_SAMPLES) return;
+            (row.x11_day_type === "closed" ? closedDays : classDays).add(row.date);
+        });
+        let label = "LightGBM（まだ学習していません）";
+        if (lastRun && lastRun.status === "ok") label = "LightGBM（毎朝4時に学習）";
+        if (lastRun && lastRun.status === "skipped") label = "LightGBM（学習できる日数が足りず見送り）";
+        if (lastRun && lastRun.status === "failed") label = "LightGBM（直近の学習に失敗）";
+        return {
+            stage: "lightgbm",
+            stageLabel: label,
+            trainedAt: lastRun && lastRun.status === "ok" ? lastRun.finishedAt : null,
+            training: { classDays: classDays.size, closedDays: closedDays.size },
+            forecasting: false
+        };
+    }
+
+    function tertiles(values) {
+        const sorted = values.slice().sort(function (a, b) { return a - b; });
+        return {
+            t1: sorted[Math.floor(sorted.length / 3)],
+            t2: sorted[Math.floor(sorted.length * 2 / 3)]
+        };
+    }
+
+    async function getCampusOverview(now) {
+        const today = options.getTokyoDateString(now);
+        const parts = options.getTokyoTimeParts(now);
+        const observed = Array.from(actualByDate().keys()).sort()
+            .filter(function (date) { return date >= addDays(today, -60) && date < today; });
+        const first = observed.length > 0 ? observed[0] : addDays(today, -7);
+        const dates = [];
+        for (let date = first; date <= addDays(today, 31); date = addDays(date, 1)) dates.push(date);
+        const days = await describeDays(dates, now);
+
+        const pastClassDays = days.filter(function (day) {
+            return day.date < today && day.type === "class" && day.actualPeak !== null;
+        });
+        const recent = days
+            .filter(function (day) { return day.date < today && day.type === "class" && day.mae !== null; })
+            .slice(-7);
+        const upcomingPeaks = days
+            .filter(function (day) { return day.date >= today && day.type === "class" && day.forecastPeak !== null; })
+            .map(function (day) { return day.forecastPeak; });
+        let colorScale = null;
+        if (pastClassDays.length >= 10) {
+            colorScale = Object.assign({ basis: "actual" }, tertiles(pastClassDays.map(function (d) { return d.actualPeak; })));
+        } else if (upcomingPeaks.length >= 3) {
+            colorScale = Object.assign({ basis: "forecast" }, tertiles(upcomingPeaks));
+        }
+
+        // 品質が invalid の回は飛ばして、最後の有効な値を出す。
+        const snapshots = options.getSnapshots();
+        let latest = null;
+        for (let i = snapshots.length - 1; i >= 0 && !latest; i -= 1) {
+            if (snapshots[i].quality !== "invalid") latest = snapshots[i];
+        }
+
+        return {
+            generatedAt: now.toISOString(),
+            today: today,
+            nowMinute: parts.hour * 60 + parts.minute,
+            bins: binMinutes(),
+            devicesPerPerson: options.devicesPerPerson,
+            current: latest
+                ? {
+                    population: Math.round(latest.estimatedTotalDeviceCount / options.devicesPerPerson),
+                    measuredAt: latest.measuredAt,
+                    quality: latest.quality
+                }
+                : null,
+            model: await describeModel(),
+            recentMae: recent.length > 0
+                ? {
+                    value: recent.reduce(function (a, d) { return a + d.mae; }, 0) / recent.length,
+                    days: recent.length
+                }
+                : null,
+            colorScale: colorScale,
+            days: days
+        };
+    }
+
+    async function getCampusDay(date, now) {
+        const today = options.getTokyoDateString(now);
+        const parts = options.getTokyoTimeParts(now);
+        const days = await describeDays([date], now);
+        const model = await describeModel();
+        return Object.assign(days[0], {
+            today: today,
+            nowMinute: parts.hour * 60 + parts.minute,
+            bins: binMinutes(),
+            model: { stage: model.stage, stageLabel: model.stageLabel }
+        });
+    }
+
     /* 予報を出した日ごとの誤差（実測との差の絶対値の平均）。変化を眺める用。 */
     async function getHistory() {
         const predictions = await readCsvCached(path.join(mlDir, "predictions_log.csv"));
@@ -358,6 +591,8 @@ export function createRecords(options) {
         getDay: getDay,
         getHistory: getHistory,
         getSeries: getSeries,
+        getCampusOverview: getCampusOverview,
+        getCampusDay: getCampusDay,
         getStatus: getStatus,
         listDataFiles: listDataFiles,
         resolveDataFile: resolveDataFile

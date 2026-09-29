@@ -6,6 +6,7 @@ import * as path from "path";
  *
  * - building_readings.csv : /crowd の建物ごとの接続端末数（5分ごと）
  * - lecture_snapshots/    : 授業APIの、その日に取得した時間割と学事暦
+ * - lectures/             : 明後日から1か月先までの時間割（LightGBM の先の予報用。毎晩取り直す）
  *
  * 表そのものは ml/build_table.py がこれらから組み立てる。
  */
@@ -14,6 +15,7 @@ const BUILDING_READING_HEADERS = ["measured_at", "building_key", "client_count"]
 // 授業の前（朝）と、その日の授業が終わった後（夜）に時間割を保存する。
 // 夜の分では翌日の時間割も先に取っておく（朝4時の学習で翌日＝当日の予報に使う）。
 const LECTURE_SNAPSHOT_MINUTES = [6 * 60, 21 * 60];
+const UPCOMING_DAYS = 31;
 
 /*
  * /crowd の建物ごとの端末数。API の項目名が apClientCount から
@@ -34,6 +36,7 @@ export function createDataStore(options) {
 
     const buildingReadingsPath = path.join(dataDir, "building_readings.csv");
     const lectureSnapshotDir = path.join(dataDir, "lecture_snapshots");
+    const upcomingLectureDir = path.join(dataDir, "lectures");
     let lastBuildingMeasuredAt = null;
     let timer = null;
 
@@ -103,6 +106,7 @@ export function createDataStore(options) {
                 const today = getTokyoDateString(new Date());
                 await snapshotLectures(today);
                 await snapshotLectures(addDays(today, 1));
+                await prefetchUpcomingLectures();
             } catch (error) {
                 console.error("時間割の保存に失敗しました。", error);
             } finally {
@@ -115,6 +119,39 @@ export function createDataStore(options) {
         const d = new Date(date + "T12:00:00+09:00");
         d.setUTCDate(d.getUTCDate() + days);
         return getTokyoDateString(d);
+    }
+
+    /* 明後日から UPCOMING_DAYS 日先までの時間割を、半日より古ければ取り直す。 */
+    async function prefetchUpcomingLectures() {
+        const today = getTokyoDateString(new Date());
+        await fs.promises.mkdir(upcomingLectureDir, { recursive: true });
+        for (let offset = 2; offset <= UPCOMING_DAYS; offset += 1) {
+            const date = addDays(today, offset);
+            const filePath = path.join(upcomingLectureDir, date + ".json");
+            try {
+                const stat = await fs.promises.stat(filePath);
+                if (Date.now() - stat.mtimeMs < 12 * 60 * 60 * 1000) continue;
+            } catch (error) {
+                // まだ無い
+            }
+            try {
+                const data = await fetchJson(
+                    "https://api.dtc.wide.ad.jp/lectures?date=" + date,
+                    "授業情報（先の日）"
+                );
+                const temporaryPath = filePath + ".tmp";
+                await fs.promises.writeFile(
+                    temporaryPath,
+                    JSON.stringify({ fetchedAt: new Date().toISOString(), data: data }),
+                    "utf8"
+                );
+                await fs.promises.rename(temporaryPath, filePath);
+            } catch (error) {
+                console.error("先の日の時間割の取得に失敗しました: " + date, error.message);
+            }
+            // DTC API を続けて叩きすぎない
+            await new Promise(function (resolve) { setTimeout(resolve, 2000); });
+        }
     }
 
     function hasLectureSnapshot(date) {
@@ -133,6 +170,9 @@ export function createDataStore(options) {
             });
         });
         scheduleLectureSnapshots();
+        prefetchUpcomingLectures().catch(function (error) {
+            console.error("先の日の時間割の取得に失敗しました。", error);
+        });
     }
 
     return {
