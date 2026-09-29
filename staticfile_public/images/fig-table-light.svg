@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1094 398" font-family="'Zen Maru Gothic','Hiragino Maru Gothic ProN',sans-serif">
+  <rect x="974" y="44" width="100" height="348" rx="12" fill="#fde0cf"/>
+  <line x1="86" y1="44" x2="950" y2="44" stroke="#d9480f" stroke-width="2"/>
+  <text x="518.0" y="30" text-anchor="middle" font-size="22" font-weight="700" fill="#d9480f">説明変数 x（11列）</text>
+  <text x="1024.0" y="30" text-anchor="middle" font-size="22" font-weight="700" fill="#d9480f">目的変数 y</text>
+  <text x="53.0" y="114" text-anchor="middle" font-size="22" fill="#b8b1a6">日付</text>
+  <text x="126.0" y="80" text-anchor="middle" font-size="22" font-style="italic" fill="#d9480f">x₁</text>
+  <text x="126.0" y="114" text-anchor="middle" font-size="22" fill="#6f6a63">時刻</text>
+  <text x="209.0" y="80" text-anchor="middle" font-size="22" font-style="italic" fill="#d9480f">x₂</text>
+  <text x="209.0" y="114" text-anchor="middle" font-size="22" fill="#6f6a63">1限</text>
+  <text x="295.0" y="80" text-anchor="middle" font-size="22" font-style="italic" fill="#d9480f">x₃</text>
+  <text x="295.0" y="114" text-anchor="middle" font-size="22" fill="#6f6a63">2限</text>
+  <text x="381.0" y="80" text-anchor="middle" font-size="22" font-style="italic" fill="#d9480f">x₄</text>
+  <text x="381.0" y="114" text-anchor="middle" font-size="22" fill="#6f6a63">3限</text>
+  <text x="467.0" y="80" text-anchor="middle" font-size="22" font-style="italic" fill="#d9480f">x₅</text>
+  <text x="467.0" y="114" text-anchor="middle" font-size="22" fill="#6f6a63">4限</text>
+  <text x="553.0" y="80" text-anchor="middle" font-size="22" font-style="italic" fill="#d9480f">x₆</text>
+  <text x="553.0" y="114" text-anchor="middle" font-size="22" fill="#6f6a63">5限</text>
+  <text x="639.0" y="80" text-anchor="middle" font-size="22" font-style="italic" fill="#d9480f">x₇</text>
+  <text x="639.0" y="114" text-anchor="middle" font-size="22" fill="#6f6a63">6限</text>
+  <text x="725.0" y="80" text-anchor="middle" font-size="22" font-style="italic" fill="#d9480f">x₈</text>
+  <text x="725.0" y="114" text-anchor="middle" font-size="22" fill="#6f6a63">7限</text>
+  <text x="798.0" y="80" text-anchor="middle" font-size="22" font-style="italic" fill="#d9480f">x₉</text>
+  <text x="798.0" y="114" text-anchor="middle" font-size="22" fill="#6f6a63">曜日</text>
+  <text x="854.0" y="80" text-anchor="middle" font-size="22" font-style="italic" fill="#d9480f">x₁₀</text>
+  <text x="854.0" y="114" text-anchor="middle" font-size="22" fill="#6f6a63">週</text>
+  <text x="915.0" y="80" text-anchor="middle" font-size="22" font-style="italic" fill="#d9480f">x₁₁</text>
+  <text x="915.0" y="114" text-anchor="middle" font-size="22" fill="#6f6a63">種類</text>
+  <text x="1024.0" y="80" text-anchor="middle" font-size="22" font-style="italic" fill="#1f1f1f">y</text>
+  <text x="1024.0" y="114" text-anchor="middle" font-size="22" fill="#1f1f1f">人数</text>
+  <line x1="20" y1="128" x2="950" y2="128" stroke="#cfc8bc" stroke-width="1.5"/>
+  <text x="53.0" y="167.0" text-anchor="middle" font-size="22" fill="#b8b1a6">10/6</text>
+  <text x="126.0" y="167.0" text-anchor="middle" font-size="22" font-weight="700" fill="#1f1f1f">9:00</text>
+  <text x="209.0" y="167.0" text-anchor="middle" font-size="22" fill="#4a4640">1,200</text>
+  <text x="295.0" y="167.0" text-anchor="middle" font-size="22" fill="#4a4640">2,900</text>
+  <text x="381.0" y="167.0" text-anchor="middle" font-size="22" fill="#4a4640">2,950</text>
+  <text x="467.0" y="167.0" text-anchor="middle" font-size="22" fill="#4a4640">3,000</text>
+  <text x="553.0" y="167.0" text-anchor="middle" font-size="22" fill="#4a4640">2,300</text>
+  <text x="639.0" y="167.0" text-anchor="middle" font-size="22" fill="#4a4640">70</text>
+  <text x="725.0" y="167.0" text-anchor="middle" font-size="22" fill="#4a4640">30</text>
+  <text x="798.0" y="167.0" text-anchor="middle" font-size="22" fill="#4a4640">火</text>
+  <text x="854.0" y="167.0" text-anchor="middle" font-size="22" fill="#4a4640">1</text>
+  <text x="915.0" y="167.0" text-anchor="middle" font-size="22" fill="#4a4640">通常</text>
+  <text x="1024.0" y="167.0" text-anchor="middle" font-size="22" font-weight="700" fill="#1f1f1f">520</text>
+  <text x="53.0" y="217.0" text-anchor="middle" font-size="22" fill="#b8b1a6">10/6</text>
+  <text x="126.0" y="217.0" text-anchor="middle" font-size="22" font-weight="700" fill="#1f1f1f">9:30</text>
+  <text x="209.0" y="217.0" text-anchor="middle" font-size="22" fill="#4a4640">1,200</text>
+  <text x="295.0" y="217.0" text-anchor="middle" font-size="22" fill="#4a4640">2,900</text>
+  <text x="381.0" y="217.0" text-anchor="middle" font-size="22" fill="#4a4640">2,950</text>
+  <text x="467.0" y="217.0" text-anchor="middle" font-size="22" fill="#4a4640">3,000</text>
+  <text x="553.0" y="217.0" text-anchor="middle" font-size="22" fill="#4a4640">2,300</text>
+  <text x="639.0" y="217.0" text-anchor="middle" font-size="22" fill="#4a4640">70</text>
+  <text x="725.0" y="217.0" text-anchor="middle" font-size="22" fill="#4a4640">30</text>
+  <text x="798.0" y="217.0" text-anchor="middle" font-size="22" fill="#4a4640">火</text>
+  <text x="854.0" y="217.0" text-anchor="middle" font-size="22" fill="#4a4640">1</text>
+  <text x="915.0" y="217.0" text-anchor="middle" font-size="22" fill="#4a4640">通常</text>
+  <text x="1024.0" y="217.0" text-anchor="middle" font-size="22" font-weight="700" fill="#1f1f1f">780</text>
+  <text x="53.0" y="267.0" text-anchor="middle" font-size="22" fill="#b8b1a6">10/6</text>
+  <text x="126.0" y="267.0" text-anchor="middle" font-size="22" font-weight="700" fill="#1f1f1f">11:00</text>
+  <text x="209.0" y="267.0" text-anchor="middle" font-size="22" fill="#4a4640">1,200</text>
+  <text x="295.0" y="267.0" text-anchor="middle" font-size="22" fill="#4a4640">2,900</text>
+  <text x="381.0" y="267.0" text-anchor="middle" font-size="22" fill="#4a4640">2,950</text>
+  <text x="467.0" y="267.0" text-anchor="middle" font-size="22" fill="#4a4640">3,000</text>
+  <text x="553.0" y="267.0" text-anchor="middle" font-size="22" fill="#4a4640">2,300</text>
+  <text x="639.0" y="267.0" text-anchor="middle" font-size="22" fill="#4a4640">70</text>
+  <text x="725.0" y="267.0" text-anchor="middle" font-size="22" fill="#4a4640">30</text>
+  <text x="798.0" y="267.0" text-anchor="middle" font-size="22" fill="#4a4640">火</text>
+  <text x="854.0" y="267.0" text-anchor="middle" font-size="22" fill="#4a4640">1</text>
+  <text x="915.0" y="267.0" text-anchor="middle" font-size="22" fill="#4a4640">通常</text>
+  <text x="1024.0" y="267.0" text-anchor="middle" font-size="22" font-weight="700" fill="#1f1f1f">1,450</text>
+  <text x="126.0" y="313.0" text-anchor="middle" font-size="22" fill="#9a948c">⋮</text>
+  <text x="209.0" y="313.0" text-anchor="middle" font-size="22" fill="#9a948c">⋮</text>
+  <text x="295.0" y="313.0" text-anchor="middle" font-size="22" fill="#9a948c">⋮</text>
+  <text x="381.0" y="313.0" text-anchor="middle" font-size="22" fill="#9a948c">⋮</text>
+  <text x="467.0" y="313.0" text-anchor="middle" font-size="22" fill="#9a948c">⋮</text>
+  <text x="553.0" y="313.0" text-anchor="middle" font-size="22" fill="#9a948c">⋮</text>
+  <text x="639.0" y="313.0" text-anchor="middle" font-size="22" fill="#9a948c">⋮</text>
+  <text x="725.0" y="313.0" text-anchor="middle" font-size="22" fill="#9a948c">⋮</text>
+  <text x="798.0" y="313.0" text-anchor="middle" font-size="22" fill="#9a948c">⋮</text>
+  <text x="854.0" y="313.0" text-anchor="middle" font-size="22" fill="#9a948c">⋮</text>
+  <text x="915.0" y="313.0" text-anchor="middle" font-size="22" fill="#9a948c">⋮</text>
+  <text x="1024.0" y="313.0" text-anchor="middle" font-size="22" fill="#1f1f1f">⋮</text>
+  <line x1="20" y1="334" x2="950" y2="334" stroke="#cfc8bc" stroke-width="1.5" stroke-dasharray="5 5"/>
+  <text x="53.0" y="367.0" text-anchor="middle" font-size="22" fill="#b8b1a6">10/7</text>
+  <text x="126.0" y="367.0" text-anchor="middle" font-size="22" font-weight="700" fill="#1f1f1f">9:00</text>
+  <text x="209.0" y="367.0" text-anchor="middle" font-size="22" fill="#4a4640">1,850</text>
+  <text x="295.0" y="367.0" text-anchor="middle" font-size="22" fill="#4a4640">2,400</text>
+  <text x="381.0" y="367.0" text-anchor="middle" font-size="22" fill="#4a4640">1,100</text>
+  <text x="467.0" y="367.0" text-anchor="middle" font-size="22" fill="#4a4640">1,100</text>
+  <text x="553.0" y="367.0" text-anchor="middle" font-size="22" fill="#4a4640">640</text>
+  <text x="639.0" y="367.0" text-anchor="middle" font-size="22" fill="#4a4640">0</text>
+  <text x="725.0" y="367.0" text-anchor="middle" font-size="22" fill="#4a4640">0</text>
+  <text x="798.0" y="367.0" text-anchor="middle" font-size="22" fill="#4a4640">水</text>
+  <text x="854.0" y="367.0" text-anchor="middle" font-size="22" fill="#4a4640">1</text>
+  <text x="915.0" y="367.0" text-anchor="middle" font-size="22" fill="#4a4640">通常</text>
+  <text x="1024.0" y="367.0" text-anchor="middle" font-size="22" font-weight="700" fill="#1f1f1f">610</text>
+</svg>

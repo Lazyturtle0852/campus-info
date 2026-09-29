@@ -1,0 +1,52 @@
+# main に push されたら、VPS の deploy/update.sh を SSH で動かす。
+# VPS 側の鍵は command= で update.sh しか動かせないので、ここから送れるのは
+# 標準入力の設定（教室定員と healthchecks の URL）だけ。ビルドは VPS で行う。
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: SSH の鍵と known_hosts を用意する
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          # 生のまま貼られた鍵（BEGIN 行がある）も、base64 で1行にした鍵も受け付ける
+          if printf '%s' "$KEY" | grep -q 'BEGIN'; then
+            printf '%s\n' "$KEY" > ~/.ssh/id_ed25519
+          else
+            printf '%s' "$KEY" | tr -d ' \n' | base64 -d > ~/.ssh/id_ed25519
+          fi
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keygen -y -f ~/.ssh/id_ed25519 > /dev/null \
+            || { echo "DEPLOY_SSH_KEY が鍵として読めません"; exit 1; }
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: 本番を更新する
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          CLASSROOMS_B64: ${{ secrets.CLASSROOMS_B64 }}
+          HC_COLLECT_URL: ${{ secrets.HC_COLLECT_URL }}
+          HC_TRAIN_URL: ${{ secrets.HC_TRAIN_URL }}
+        run: |
+          {
+            printf 'CLASSROOMS_B64=%s\n' "$CLASSROOMS_B64"
+            printf 'HC_COLLECT_URL=%s\n' "$HC_COLLECT_URL"
+            printf 'HC_TRAIN_URL=%s\n' "$HC_TRAIN_URL"
+          } | ssh -o BatchMode=yes "deploy-campus@$HOST"

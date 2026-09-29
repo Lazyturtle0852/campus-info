@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>実績の表</title>
+    <style>
+        :root {
+            --text: #1f2937;
+            --muted: #6b7280;
+            --line: #d1d5db;
+            --soft: #f3f4f6;
+            --softer: #f9fafb;
+            --accent: #2563eb;
+            --ok: #166534; --ok-bg: #dcfce7;
+            --warn: #854d0e; --warn-bg: #fef9c3;
+            --bad: #991b1b; --bad-bg: #fee2e2;
+            --a: #2563eb; --b: #0d9488; --mean: #9ca3af;
+        }
+        body {
+            margin: 0;
+            padding: 0 16px 48px;
+            font-family: system-ui, -apple-system, "Hiragino Sans", sans-serif;
+            line-height: 1.6;
+            color: var(--text);
+            background-color: #ffffff;
+        }
+        main { max-width: 1100px; margin: 0 auto; }
+        header.top {
+            display: flex; flex-wrap: wrap; align-items: baseline;
+            justify-content: space-between; gap: 8px;
+            max-width: 1100px; margin: 0 auto; padding: 16px 0 8px;
+            border-bottom: 1px solid var(--line);
+        }
+        header.top h1 { margin: 0; font-size: 1.4em; }
+        header.top h1 a { color: inherit; text-decoration: none; }
+        .meta a { margin-left: 12px; }
+        h2 { margin-top: 32px; font-size: 1.15em; }
+        .muted, small { color: var(--muted); }
+        code {
+            padding: 1px 4px; font-family: ui-monospace, Menlo, monospace;
+            font-size: 0.9em; background-color: var(--soft); border-radius: 4px;
+        }
+
+        .status {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 8px; margin-top: 16px;
+        }
+        .status div {
+            padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px;
+            background-color: var(--softer);
+        }
+        .status b { display: block; font-size: 1.15em; }
+        .status .ok { border-color: var(--ok); background-color: var(--ok-bg); }
+        .status .warn { border-color: var(--warn); background-color: var(--warn-bg); }
+        .status .bad { border-color: var(--bad); background-color: var(--bad-bg); }
+
+        .chart { width: 100%; height: auto; margin-top: 8px; }
+        .legend span { margin-right: 14px; font-size: 0.9em; }
+        .legend i { display: inline-block; width: 14px; height: 3px; margin-right: 4px; vertical-align: middle; }
+
+        .daynav { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+        .btn {
+            padding: 4px 12px; border: 1px solid var(--line); border-radius: 8px;
+            background-color: #ffffff; color: inherit; text-decoration: none; cursor: pointer;
+            font: inherit;
+        }
+        .errors { margin-top: 8px; }
+        .errors span { margin-right: 16px; }
+
+        .table-wrap { overflow-x: auto; margin-top: 12px; }
+        table { border-collapse: collapse; font-size: 0.85em; white-space: nowrap; }
+        th, td { padding: 4px 8px; border: 1px solid var(--line); text-align: right; }
+        th { background-color: var(--soft); position: sticky; top: 0; }
+        td.l, th.l { text-align: left; }
+        th small { display: block; font-weight: normal; }
+        td.y { font-weight: bold; }
+        td.empty { color: var(--line); }
+        tr.now td { background-color: #eff6ff; }
+        .extra { display: none; }
+        table.show-extra .extra { display: table-cell; }
+    </style>
+</head>
+<body>
+    <header class="top">
+        <h1><a href="/records">実績の表</a></h1>
+        <div class="meta">
+            <a href="/">キャンパス人数</a>
+            <a href="/about">このサイトについて</a>
+            <a href="/mlstrategy">予報の戦略</a>
+        </div>
+    </header>
+    <main>
+        <section>
+            <h2>収集の状態</h2>
+            <div class="status" id="status"><div>読み込み中…</div></div>
+        </section>
+
+        <section>
+            <h2>予報の誤差の移り変わり</h2>
+            <p class="muted">
+                予報を出した日ごとの、実測との差の絶対値の平均（人）。
+                LightGBM の A（手がかり11個）・B（授業中の人数を足したもの）と、
+                比べる相手の「日の種類 × 曜日 × 時刻の平均」を並べています。
+            </p>
+            <div class="legend">
+                <span><i style="background:var(--a)"></i>LightGBM A</span>
+                <span><i style="background:var(--b)"></i>LightGBM B</span>
+                <span><i style="background:var(--mean)"></i>曜日・時刻の平均</span>
+            </div>
+            <div id="history"></div>
+        </section>
+
+        <section>
+            <h2>1日の表</h2>
+            <div class="daynav">
+                <a class="btn" id="prev">← 前の日</a>
+                <input type="date" id="dateInput">
+                <a class="btn" id="next">次の日 →</a>
+                <label><input type="checkbox" id="showExtra"> 授業中の人数（x12〜x16）も出す</label>
+                <a class="btn" id="csv">この日の CSV</a>
+                <a class="btn" href="/data/ml/training_table.csv">全部の表（CSV）</a>
+            </div>
+            <div class="errors" id="errors"></div>
+            <div class="table-wrap"><table id="table"></table></div>
+            <p class="muted">
+                x01〜x11 と x12〜x16 は毎朝4時に作る表から、実測は5分ごとの値からその場でまとめています。
+                実測の横の数は、その30分枠に入った5分データの数です（6が満点、3未満は誤差の計算に使いません）。
+            </p>
+        </section>
+    </main>
+
+    <script>
+        const COLUMNS = [
+            { key: "bin_start", label: "時刻", cls: "l" },
+            { key: "x02_p1", label: "x02", sub: "1限" },
+            { key: "x03_p2", label: "x03", sub: "2限" },
+            { key: "x04_p3", label: "x04", sub: "3限" },
+            { key: "x05_p4", label: "x05", sub: "4限" },
+            { key: "x06_p5", label: "x06", sub: "5限" },
+            { key: "x07_p6", label: "x07", sub: "6限" },
+            { key: "x08_p7", label: "x08", sub: "7限" },
+            { key: "x09_dow", label: "x09", sub: "曜日" },
+            { key: "x10_week", label: "x10", sub: "週" },
+            { key: "x11_day_type", label: "x11", sub: "日の種類", cls: "l" },
+            { key: "x12_active", label: "x12", sub: "授業中", extra: true },
+            { key: "x13_active_m30", label: "x13", sub: "30分前", extra: true },
+            { key: "x14_active_m60", label: "x14", sub: "1時間前", extra: true },
+            { key: "x15_active_p30", label: "x15", sub: "30分後", extra: true },
+            { key: "x16_active_p60", label: "x16", sub: "1時間後", extra: true },
+            { key: "y_people", label: "実測", sub: "人", cls: "y" },
+            { key: "y_samples", label: "数", sub: "/6" },
+            { key: "pred_A", label: "予報A", sub: "LightGBM" },
+            { key: "pred_B", label: "予報B", sub: "LightGBM" },
+            { key: "pred_dow_mean", label: "平均", sub: "曜日・時刻" }
+        ];
+        const DOW = { "1": "月", "2": "火", "3": "水", "4": "木", "5": "金", "6": "土", "7": "日" };
+        const DAY_TYPE = { normal: "通常", substitute: "代替", closed: "休業" };
+
+        function tokyoToday() {
+            return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo" }).format(new Date());
+        }
+        function addDays(date, days) {
+            const d = new Date(date + "T12:00:00+09:00");
+            d.setUTCDate(d.getUTCDate() + days);
+            return d.toISOString().slice(0, 10);
+        }
+        function esc(value) {
+            return String(value).replace(/[&<>"]/g, function (c) {
+                return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+            });
+        }
+        function formatBytes(bytes) {
+            if (bytes >= 1e9) return (bytes / 1e9).toFixed(2) + " GB";
+            if (bytes >= 1e6) return (bytes / 1e6).toFixed(1) + " MB";
+            return Math.round(bytes / 1e3) + " KB";
+        }
+        function formatTime(iso) {
+            if (!iso) return "—";
+            return new Date(iso).toLocaleString("ja-JP", {
+                timeZone: "Asia/Tokyo", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit"
+            });
+        }
+        async function getJson(url) {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(url + " : HTTP " + response.status);
+            return response.json();
+        }
+
+        async function renderStatus() {
+            const box = document.getElementById("status");
+            try {
+                const s = await getJson("/api/status");
+                const since = s.collection.minutesSinceLast;
+                const missing = s.today.missingRate;
+                const b = s.backfill || {};
+                const t = s.training;
+                const cards = [
+                    {
+                        cls: since === null ? "bad" : since <= 15 ? "ok" : since <= 60 ? "warn" : "bad",
+                        title: "最後に取れた時刻",
+                        value: formatTime(s.collection.lastMeasuredAt),
+                        note: since === null ? "まだありません" : since + "分前・" + (s.collection.lastQuality || "")
+                    },
+                    {
+                        cls: missing === null ? "" : missing <= 0.05 ? "ok" : missing <= 0.2 ? "warn" : "bad",
+                        title: "今日の欠損率（7:00〜）",
+                        value: missing === null ? "—" : Math.round(missing * 100) + "%",
+                        note: s.today.validSamples + " / " + s.today.expectedSamples + " 件"
+                    },
+                    {
+                        cls: "",
+                        title: "データ容量",
+                        value: formatBytes(s.dataBytes),
+                        note: s.collection.totalSnapshots.toLocaleString() + " 時点分"
+                    },
+                    {
+                        cls: b.running ? "warn" : b.from ? "ok" : "",
+                        title: "過去分の取り直し",
+                        value: b.running ? "実行中" : b.from ? "待機中" : "なし",
+                        note: b.checkedThrough ? formatTime(b.checkedThrough) + " まで確認済み" : (b.from ? b.from + " から" : "")
+                    },
+                    {
+                        cls: !t ? "" : t.status === "ok" ? "ok" : t.status === "skipped" ? "warn" : "bad",
+                        title: "朝の学習",
+                        value: t ? formatTime(t.finishedAt) : "まだです",
+                        note: t ? (t.status === "ok" ? "成功" : t.status === "skipped" ? "データ不足で見送り" : "失敗") +
+                            (t.labeledDays !== undefined ? "・学習 " + t.labeledDays + " 日分" : "") : ""
+                    }
+                ];
+                box.innerHTML = cards.map(function (c) {
+                    return '<div class="' + c.cls + '"><small>' + esc(c.title) + "</small><b>" + esc(c.value) +
+                        "</b><small>" + esc(c.note) + "</small></div>";
+                }).join("");
+            } catch (error) {
+                box.innerHTML = '<div class="bad">状態を読み込めませんでした</div>';
+            }
+        }
+
+        async function renderHistory() {
+            const box = document.getElementById("history");
+            let data;
+            try {
+                data = await getJson("/api/records");
+            } catch (error) {
+                box.innerHTML = '<p class="muted">読み込めませんでした。</p>';
+                return null;
+            }
+            const points = data.history.filter(function (h) {
+                return Object.values(h.meanAbsError).some(function (v) { return v !== null; });
+            });
+            if (points.length === 0) {
+                box.innerHTML = '<p class="muted">まだ答え合わせできた日がありません。予報を出した日の夜から並び始めます。</p>';
+                return data;
+            }
+            const W = 900, H = 240, L = 44, R = 12, T = 12, B = 28;
+            const max = Math.max(10, ...points.flatMap(function (p) {
+                return Object.values(p.meanAbsError).filter(function (v) { return v !== null; });
+            }));
+            const x = function (i) { return L + (points.length === 1 ? (W - L - R) / 2 : i * (W - L - R) / (points.length - 1)); };
+            const y = function (v) { return T + (1 - v / max) * (H - T - B); };
+            let svg = '<svg class="chart" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="予報の誤差の推移">';
+            for (let k = 0; k <= 4; k += 1) {
+                const v = max * k / 4;
+                svg += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="#e5e7eb"/>' +
+                    '<text x="' + (L - 6) + '" y="' + (y(v) + 4) + '" font-size="11" text-anchor="end" fill="#6b7280">' + Math.round(v) + "</text>";
+            }
+            [["pred_dow_mean", "#9ca3af"], ["pred_A", "#2563eb"], ["pred_B", "#0d9488"]].forEach(function (series) {
+                const pts = points.map(function (p, i) {
+                    const v = p.meanAbsError[series[0]];
+                    return v === null ? null : [x(i), y(v), p.date, v];
+                }).filter(Boolean);
+                if (pts.length > 1) {
+                    svg += '<polyline fill="none" stroke="' + series[1] + '" stroke-width="2" points="' +
+                        pts.map(function (q) { return q[0] + "," + q[1]; }).join(" ") + '"/>';
+                }
+                pts.forEach(function (q) {
+                    svg += '<a href="/records/' + q[2] + '"><circle cx="' + q[0] + '" cy="' + q[1] + '" r="3.5" fill="' + series[1] +
+                        '"><title>' + q[2] + " ±" + q[3] + "人</title></circle></a>";
+                });
+            });
+            const step = Math.max(1, Math.ceil(points.length / 10));
+            points.forEach(function (p, i) {
+                if (i % step !== 0 && i !== points.length - 1) return;
+                svg += '<text x="' + x(i) + '" y="' + (H - 8) + '" font-size="11" text-anchor="middle" fill="#6b7280">' +
+                    p.date.slice(5).replace("-", "/") + "</text>";
+            });
+            box.innerHTML = svg + "</svg>";
+            return data;
+        }
+
+        function cellText(key, value) {
+            if (value === null || value === undefined || value === "") return "";
+            if (key === "x09_dow") return DOW[value] || value;
+            if (key === "x11_day_type") return DAY_TYPE[value] || value;
+            if (typeof value === "number" && key !== "y_samples" && key !== "x10_week") return String(Math.round(value));
+            return String(value);
+        }
+
+        function toCsv(rows) {
+            const keys = COLUMNS.map(function (c) { return c.key; });
+            return [["date"].concat(keys).join(",")].concat(rows.map(function (row) {
+                return [currentDate].concat(keys.map(function (k) {
+                    return row[k] === null || row[k] === undefined ? "" : row[k];
+                })).join(",");
+            })).join("\n") + "\n";
+        }
+
+        let currentDate = null;
+
+        async function renderDay(date) {
+            currentDate = date;
+            document.getElementById("dateInput").value = date;
+            document.getElementById("prev").href = "/records/" + addDays(date, -1);
+            document.getElementById("next").href = "/records/" + addDays(date, 1);
+            const table = document.getElementById("table");
+            const errors = document.getElementById("errors");
+            table.innerHTML = "";
+            errors.textContent = "読み込み中…";
+            let day;
+            try {
+                day = await getJson("/api/records/" + date);
+            } catch (error) {
+                errors.textContent = "読み込めませんでした。";
+                return;
+            }
+            const e = day.meanAbsError;
+            const parts = [];
+            if (!day.hasFeatures) parts.push("この日の手がかり（x）はまだ作られていません");
+            if (day.issuedAt) parts.push("予報は " + formatTime(day.issuedAt) + " に出したもの");
+            [["pred_A", "予報A"], ["pred_B", "予報B"], ["pred_dow_mean", "平均"]].forEach(function (m) {
+                if (e[m[0]] !== null) parts.push(m[1] + " ±" + e[m[0]] + "人");
+            });
+            errors.innerHTML = parts.map(function (p) { return "<span>" + esc(p) + "</span>"; }).join("") ||
+                '<span class="muted">この日の予報はありません</span>';
+
+            const nowBin = (function () {
+                if (date !== tokyoToday()) return null;
+                const now = new Date(Date.now() + 9 * 3600 * 1000);
+                const m = now.getUTCHours() * 60 + now.getUTCMinutes();
+                const b = Math.floor(m / 30) * 30;
+                return String(Math.floor(b / 60)).padStart(2, "0") + ":" + String(b % 60).padStart(2, "0");
+            })();
+
+            let html = "<thead><tr>" + COLUMNS.map(function (c) {
+                return '<th class="' + (c.cls === "l" ? "l " : "") + (c.extra ? "extra" : "") + '">' + esc(c.label) +
+                    (c.sub ? "<small>" + esc(c.sub) + "</small>" : "") + "</th>";
+            }).join("") + "</tr></thead><tbody>";
+            day.rows.forEach(function (row) {
+                html += '<tr class="' + (row.bin_start === nowBin ? "now" : "") + '">' + COLUMNS.map(function (c) {
+                    const text = cellText(c.key, row[c.key]);
+                    const cls = [c.cls || "", c.extra ? "extra" : "", text === "" ? "empty" : ""].join(" ").trim();
+                    return '<td class="' + cls + '">' + (text === "" ? "·" : esc(text)) + "</td>";
+                }).join("") + "</tr>";
+            });
+            table.innerHTML = html + "</tbody>";
+
+            const csv = document.getElementById("csv");
+            csv.href = URL.createObjectURL(new Blob([toCsv(day.rows)], { type: "text/csv" }));
+            csv.download = "records-" + date + ".csv";
+        }
+
+        function dateFromPath() {
+            const m = location.pathname.match(/^\/records\/(\d{4}-\d{2}-\d{2})\/?$/);
+            return m ? m[1] : tokyoToday();
+        }
+
+        document.getElementById("dateInput").addEventListener("change", function (event) {
+            if (event.target.value) location.href = "/records/" + event.target.value;
+        });
+        document.getElementById("showExtra").addEventListener("change", function (event) {
+            document.getElementById("table").classList.toggle("show-extra", event.target.checked);
+        });
+
+        renderStatus();
+        renderHistory();
+        renderDay(dateFromPath());
+        setInterval(renderStatus, 5 * 60 * 1000);
+    </script>
+</body>
+</html>

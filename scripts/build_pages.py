@@ -2,7 +2,8 @@
 
 見本（ダミーデータ）と説明ページ、解説スライドの PDF を 1 つのフォルダへコピーし、
 サーバー前提のリンク（/mlstrategy など）を相対リンクへ書き換える。
-公開版に無いページ（実データ版 /archive、旧ダッシュボード /old）へのリンクは外す。
+実データを使うページ（/ の実データ版、/records など）は本番
+（campus-info.lazyta-toru.net）へのリンクにし、旧ダッシュボード /old へのリンクは外す。
 
 使い方: python3 scripts/build_pages.py <出力先>
 """
@@ -14,33 +15,42 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PUBLIC = ROOT / "staticfile_public"
+LIVE = "https://campus-info.lazyta-toru.net"
 PAGES = {
     "index.html": "index.html",        # 見本（ダミー）
     "mlstrategy.html": "mlstrategy.html",
     "newabout.html": "newabout.html",
     "about.html": "about.html",
+    "oldabout.html": "oldabout.html",
 }
 SLIDES_PDF = ROOT / "slides" / "omakase" / "deck.pdf"
 LINK_MAP = {
-    "/": "./",
+    "/sample": "./",
     "/mlstrategy": "mlstrategy.html",
     "/newabout": "newabout.html",
     "/about": "about.html",
+    "/oldabout": "oldabout.html",
 }
 SLIDES_LINK = '<a href="slides/omakase.pdf">解説スライド（PDF）</a>'
 
 
 def rewrite(html: str) -> str:
     # 公開版に無いページへのリンクを、前後の区切り「 ・ 」ごと外す
-    html = re.sub(r'\s*・\s*<a href="/(?:archive|old)[^"]*">[^<]*</a>', "", html)
-    html = re.sub(r'<a href="/(?:archive|old)[^"]*">[^<]*</a>\s*・\s*', "", html)
-    html = re.sub(r'<a href="/(?:archive|old)[^"]*">[^<]*</a>', "", html)
+    html = re.sub(r'\s*・\s*<a href="/old"[^>]*>[^<]*</a>', "", html)
+    html = re.sub(r'<a href="/old"[^>]*>[^<]*</a>\s*・\s*', "", html)
+    html = re.sub(r'<a href="/old"[^>]*>[^<]*</a>', "", html)
+
+    # 画像はフォルダごとコピーするので相対パスに
+    html = html.replace('src="/images/', 'src="images/')
 
     def repl(match):
         path, anchor = match.group(1), match.group(2) or ""
-        return f'href="{LINK_MAP.get(path, path)}{anchor}"'
+        if path in LINK_MAP:
+            return f'href="{LINK_MAP[path]}{anchor}"'
+        # それ以外（/、/archive、/records、/bus、/api/… など）は本番のサーバーにある
+        return f'href="{LIVE}{path}{anchor}"'
 
-    return re.sub(r'href="(/[a-z]*)(#[^"]*)?"', repl, html)
+    return re.sub(r'href="(/[a-z0-9/_-]*)(#[^"]*)?"', repl, html)
 
 
 def main():
@@ -61,6 +71,7 @@ def main():
             sys.exit(f"{src} にサーバー前提のリンクが残っています: {leftover}")
         (out / dst).write_text(html, encoding="utf-8")
 
+    shutil.copytree(PUBLIC / "images", out / "images", dirs_exist_ok=True)
     if SLIDES_PDF.exists():
         (out / "slides").mkdir(exist_ok=True)
         shutil.copy(SLIDES_PDF, out / "slides" / "omakase.pdf")

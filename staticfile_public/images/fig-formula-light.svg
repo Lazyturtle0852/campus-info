@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 440" font-family="'Zen Maru Gothic','Hiragino Maru Gothic ProN',sans-serif">
+  <defs>
+    <marker id="arw" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="18" refX="16" refY="9" orient="auto">
+      <path d="M0 0L18 9L0 18z" fill="#d9480f"/>
+    </marker>
+  </defs>
+  <text x="10" y="258" font-size="52" font-weight="700" fill="#1f1f1f">予報</text>
+  <text x="130" y="260" font-size="56" font-weight="700" fill="#1f1f1f">=</text>
+  <text x="200" y="262" font-size="64" font-weight="700" font-style="italic" fill="#d9480f">f</text>
+  <text x="248" y="275" font-size="200" font-weight="300" fill="#6f6a63">(</text>
+  <rect x="330" y="40" width="560" height="64" rx="14" fill="#ffffff"/>
+  <text x="360" y="82" font-size="30" fill="#d9480f">x₁</text>
+  <text x="530" y="82" font-size="30" fill="#1f1f1f">時刻</text>
+  <rect x="330" y="120" width="560" height="64" rx="14" fill="#ffffff"/>
+  <text x="360" y="162" font-size="30" fill="#d9480f">x₂〜x₈</text>
+  <text x="530" y="162" font-size="30" fill="#1f1f1f">1〜7限の履修人数</text>
+  <rect x="330" y="200" width="560" height="64" rx="14" fill="#ffffff"/>
+  <text x="360" y="242" font-size="30" fill="#d9480f">x₉</text>
+  <text x="530" y="242" font-size="30" fill="#1f1f1f">曜日</text>
+  <rect x="330" y="280" width="560" height="64" rx="14" fill="#ffffff"/>
+  <text x="360" y="322" font-size="30" fill="#d9480f">x₁₀</text>
+  <text x="530" y="322" font-size="30" fill="#1f1f1f">学期の週</text>
+  <rect x="330" y="360" width="560" height="64" rx="14" fill="#ffffff"/>
+  <text x="360" y="402" font-size="30" fill="#d9480f">x₁₁</text>
+  <text x="530" y="402" font-size="30" fill="#1f1f1f">日の種類</text>
+  <text x="905" y="275" font-size="200" font-weight="300" fill="#6f6a63">)</text>
+
+</svg>

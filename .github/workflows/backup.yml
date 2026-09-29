@@ -1,0 +1,93 @@
+# 毎晩、campus-info.lazyta-toru.net が公開しているデータを取りに行き、data ブランチに保存する。
+# VPS に書き込み用の鍵を置かずに済むよう、公開 URL から取るだけにしている。
+# 5分ごとの CSV は月ごとに分けて置く（過去の月のファイルは以後変わらないので、履歴が膨らまない）。
+name: backup
+
+on:
+  schedule:
+    - cron: "30 20 * * *" # 日本時間 05:30（朝4時の学習のあと）
+  workflow_dispatch:
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  SITE: https://campus-info.lazyta-toru.net
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: data ブランチを用意する
+        run: |
+          if git ls-remote --exit-code --heads origin data > /dev/null; then
+            git fetch --depth 1 origin data:refs/remotes/origin/data
+            git switch -c data --track origin/data
+          else
+            git switch --orphan data
+            git rm -rf --quiet . || true
+            printf '# campus-info のデータ\n\n毎晩 %s から保存しています。中身は main の staticfile_public/about.html を参照。\n' "$SITE" > README.md
+          fi
+
+      - name: 取りに行く
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          from pathlib import Path
+
+          site = os.environ["SITE"]
+
+          def get(path):
+              with urllib.request.urlopen(f"{site}/{path}", timeout=120) as r:
+                  return r.read()
+
+          def split_by_month(name, text):
+              """measured_at（先頭の列）の年月ごとに分ける。"""
+              lines = text.splitlines(keepends=True)
+              header, rows = lines[0], lines[1:]
+              months = {}
+              for row in rows:
+                  months.setdefault(row[:7], []).append(row)
+              out = Path(name)
+              out.mkdir(exist_ok=True)
+              for month, month_rows in months.items():
+                  if len(month) == 7 and month[4] == "-":
+                      (out / f"{month}.csv").write_text(header + "".join(sorted(month_rows)))
+
+          files = json.loads(get("api/data-files"))["files"]
+          for f in files:
+              path = f["path"]
+              if path in ("crowd_snapshots.csv", "building_readings.csv"):
+                  split_by_month(path.removesuffix(".csv"), get(f"data/{path}").decode("utf-8"))
+                  continue
+              target = Path(path)
+              # 時間割は、ここ数日の分だけ取り直す（それより前は変わらない）
+              if path.startswith("lecture_snapshots/") and target.exists():
+                  continue
+              target.parent.mkdir(parents=True, exist_ok=True)
+              target.write_bytes(get(f"data/{path}"))
+          # 直近の時間割は夜に保存し直されるので、最後の3日分は上書きする
+          recent = sorted(f["path"] for f in files if f["path"].startswith("lecture_snapshots/"))[-3:]
+          for path in recent:
+              Path(path).write_bytes(get(f"data/{path}"))
+          print(f"{len(files)} files")
+          PY
+
+      - name: 変わっていたらコミットする
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "変更なし"
+          else
+            git commit --quiet -m "backup $(TZ=Asia/Tokyo date +%Y-%m-%d)"
+            git push origin data
+          fi

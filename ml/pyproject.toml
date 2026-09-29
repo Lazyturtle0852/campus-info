@@ -1,0 +1,11 @@
+[project]
+name = "sfc-crowding-ml"
+version = "0.1.0"
+description = "キャンパス人数予報（勾配ブースティング）の学習用の表づくりと学習"
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=2.2",
+    "numpy>=2.0",
+    "lightgbm>=4.5",
+    "scikit-learn>=1.5",
+]

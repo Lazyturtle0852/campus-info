@@ -7,3 +7,8 @@ cpd;/
 .env
 .env.*
 !.env.example
+
+# ML
+ml/.venv/
+ml/output/
+ml/data-snapshot/

@@ -1,19 +1,57 @@
+# campus-info.lazyta-toru.net の本番構成（VPS で deploy/update.sh から起動する）。
+#   dashboard … 画面と API、5分ごとの取得と過去分の取り直し
+#   trainer   … 毎朝4時に学習用の表を作り、LightGBM を学習して予報を出す
+# 同じ VPS に他のサービスも居るので、どちらもメモリの上限を付けてある。
+name: campus-info
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   dashboard:
     build: .
     init: true
     restart: unless-stopped
+    # 外から届く経路は Apache の vhost（deploy/apache/）だけにする
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${APP_PORT:-3010}:3000"
+    env_file:
+      - path: .env
+        required: false
     environment:
       NODE_ENV: production
+      NODE_OPTIONS: --max-old-space-size=192
       PORT: "3000"
       CROWD_DATA_DIR: /app/data
       CLASSROOM_INFO_PATH: /app/private-data/kyousitu_size.json
-      INBOUND_BUS_TIMETABLE_PATH: /app/private-data/kanachu_jikoku_from_shonandai.json
+      BACKFILL_FROM: ${BACKFILL_FROM:-2026-07-15}
     volumes:
       - crowd_data:/app/data
       - ./private-data:/app/private-data:ro
+    mem_limit: 256m
+    logging: *logging
+
+  trainer:
+    build: ./ml
+    init: true
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATA_DIR: /data
+      CLASSROOMS_PATH: /private-data/kyousitu_size.json
+      RUN_AT: "04:00"
+    volumes:
+      - crowd_data:/data
+      - ./private-data:/private-data:ro
+    mem_limit: 512m
+    depends_on:
+      - dashboard
+    logging: *logging
 
 volumes:
   crowd_data:

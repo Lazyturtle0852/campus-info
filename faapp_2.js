@@ -3,7 +3,10 @@ import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
 import { createCampusForecaster, getRoomNames } from "./forecast.js";
+import { createDataStore, getReadingDeviceCount } from "./datastore.js";
 import { createBusForecaster } from "./busforecast.js";
+import { createBackfiller } from "./backfill.js";
+import { createRecords } from "./records.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -59,8 +62,46 @@ const campusForecaster = createCampusForecaster({
     devicesPerPerson: DEFAULT_DEVICES_PER_PERSON
 });
 const outboundBusCache = new Map();
+const dataStore = createDataStore({
+    dataDir: CROWD_DATA_DIR,
+    fetchJson: fetchJson,
+    getTokyoDateString: getTokyoDateString,
+    getTokyoTimeParts: getTokyoTimeParts
+});
+
+const backfiller = createBackfiller({
+    dataDir: CROWD_DATA_DIR,
+    // 過去分をどの日から取り直すか。空なら取り直さない（手元での開発など）。
+    from: process.env.BACKFILL_FROM || "",
+    fetchJson: fetchJson,
+    getTokyoDateString: getTokyoDateString,
+    hasSnapshotNear: hasSnapshotNear,
+    ingest: function (crowdData) {
+        return enqueueCrowdObservation(crowdData, new Date());
+    },
+    ensureLectures: async function (date) {
+        if (dataStore.hasLectureSnapshot(date)) return;
+        if (fs.existsSync(path.join(CROWD_DATA_DIR, "lectures", date + ".json"))) return;
+        await dataStore.snapshotLectures(date);
+    }
+});
+const records = createRecords({
+    dataDir: CROWD_DATA_DIR,
+    devicesPerPerson: DEFAULT_DEVICES_PER_PERSON,
+    getSnapshots: function () { return crowdHistoryState.snapshots; },
+    getTokyoDateString: getTokyoDateString,
+    getTokyoTimeParts: getTokyoTimeParts,
+    getBackfillStatus: function () { return backfiller.getStatus(); }
+});
 
 app.use(express.json());
+// トップは実データ版。GitHub Pages と同じ見本（ダミー）は /sample に置く。
+app.get("/", function (req, res) {
+    res.sendFile(path.join(__dirname, "staticfile_public", "archive.html"));
+});
+app.get("/sample", function (req, res) {
+    res.sendFile(path.join(__dirname, "staticfile_public", "index.html"));
+});
 app.use(express.static(path.join(__dirname, "staticfile_public"), {
     extensions: ["html"]
 }));
@@ -104,12 +145,13 @@ function loadInboundBusTimetable() {
         return fs.existsSync(candidate);
     });
 
+    // 公開版（campus-info）は DTC API で公開されているものだけを使うので、
+    // 登校側の時刻表は置かない。無ければ「登校側の便なし」として動く。
     if (!filePath) {
-        throw new Error(
-            "登校側バス時刻表JSONが見つかりません。" +
-            "kanachu_jikoku_from_shonandai.json、または" +
-            "INBOUND_BUS_TIMETABLE_PATHを指定してください。"
+        console.warn(
+            "登校側バス時刻表JSONが無いので、登校側のバスは表示しません。"
         );
+        return {};
     }
 
     return JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -462,19 +504,19 @@ function estimateCampusPopulation(crowdData, averageDevicesPerPerson) {
     });
 
     const availableReadings = buildingReadings.filter(function (reading) {
-        return Number.isFinite(reading.apClientCount);
+        return Number.isFinite(getReadingDeviceCount(reading));
     });
 
     const connectedDeviceCount = availableReadings.reduce(
         function (total, reading) {
-            return total + reading.apClientCount;
+            return total + getReadingDeviceCount(reading);
         },
         0
     );
 
     const unavailableBuildings = buildingReadings
         .filter(function (reading) {
-            return !Number.isFinite(reading.apClientCount);
+            return !Number.isFinite(getReadingDeviceCount(reading));
         })
         .map(function (reading) {
             return reading.buildingKey;
@@ -741,8 +783,14 @@ function updateBuildingStatistics(state, observedBuildings, measuredAt) {
         // 実測値だけで統計を更新し、補完値は混ぜない。
         addToOnlineStatistic(slotStatistic, value, measuredAt);
         addToOnlineStatistic(container.overall, value, measuredAt);
-        container.latestObservedValue = value;
-        container.latestObservedAt = measuredAt;
+        // 過去分の取り直しで古い値が後から来ても、「最新の実測」は巻き戻さない。
+        if (
+            !container.latestObservedAt ||
+            new Date(measuredAt) >= new Date(container.latestObservedAt)
+        ) {
+            container.latestObservedValue = value;
+            container.latestObservedAt = measuredAt;
+        }
     });
 }
 
@@ -771,8 +819,9 @@ function normalizeCrowdObservation(state, crowdData, fetchedAt) {
     buildingReadings.forEach(function (reading) {
         state.knownBuildingKeys.add(reading.buildingKey);
 
-        if (Number.isFinite(reading.apClientCount)) {
-            observedBuildings[reading.buildingKey] = reading.apClientCount;
+        const deviceCount = getReadingDeviceCount(reading);
+        if (Number.isFinite(deviceCount)) {
+            observedBuildings[reading.buildingKey] = deviceCount;
         } else {
             unavailableFromApi.add(reading.buildingKey);
         }
@@ -1366,6 +1415,7 @@ async function persistCrowdObservation(crowdData, fetchedAt) {
 
     await appendCrowdSnapshot(result.snapshot);
     await writeBuildingStatisticsCsv(crowdHistoryState);
+    await dataStore.appendBuildingReadings(crowdData, result.snapshot.measuredAt);
     return result;
 }
 
@@ -1378,6 +1428,37 @@ function enqueueCrowdObservation(crowdData, fetchedAt) {
         // 次回の保存処理を止めないため、キュー自体は復旧させる。
     });
     return operation;
+}
+
+/* 指定した時刻の前後2分半以内に、もう取れている値があるか（取り直しの要否）。 */
+function hasSnapshotNear(isoString) {
+    const target = new Date(isoString).getTime();
+    const snapshots = crowdHistoryState.snapshots;
+    let low = 0;
+    let high = snapshots.length - 1;
+    while (low <= high) {
+        const middle = (low + high) >> 1;
+        const diff = new Date(snapshots[middle].measuredAt).getTime() - target;
+        if (Math.abs(diff) <= 150 * 1000) return true;
+        if (diff < 0) low = middle + 1;
+        else high = middle - 1;
+    }
+    return false;
+}
+
+/*
+ * healthchecks.io へ「動いている」を知らせる。URL は .env の HC_COLLECT_URL。
+ * 建物の値が1つも取れなかったときは /fail を送る。
+ */
+function pingHealthcheck(ok) {
+    const url = process.env.HC_COLLECT_URL;
+    if (!url) return;
+    fetch(ok ? url : url.replace(/\/$/, "") + "/fail", {
+        method: "POST",
+        signal: AbortSignal.timeout(10000)
+    }).catch(function (error) {
+        console.error("healthchecks への通知に失敗しました。", error.message);
+    });
 }
 
 async function collectCrowdObservation(at) {
@@ -1401,9 +1482,11 @@ function scheduleNextCrowdCollection() {
 
     crowdCollectionTimer = setTimeout(async function () {
         try {
-            await collectCrowdObservation(new Date());
+            const result = await collectCrowdObservation(new Date());
+            pingHealthcheck(result.snapshot.availableBuildingCount > 0);
         } catch (error) {
             console.error("Wi-Fi接続数の定期取得に失敗しました。", error);
+            pingHealthcheck(false);
         } finally {
             scheduleNextCrowdCollection();
         }
@@ -1412,6 +1495,7 @@ function scheduleNextCrowdCollection() {
 
 async function initializeCrowdPersistence() {
     await fs.promises.mkdir(CROWD_DATA_DIR, { recursive: true });
+    await dataStore.initialize();
     await loadCrowdHistoryFromCsv(crowdHistoryState);
 
     try {
@@ -1618,13 +1702,42 @@ function parseDate(value) {
     return date;
 }
 
+// 公開すると閲覧のたびに DTC API を叩くことになるので、時間割とバスは少しの間ためておく。
+const FETCH_CACHE_TTL_MS = 10 * 60 * 1000;
+const FETCH_CACHE_PREFIXES = [
+    "https://api.dtc.wide.ad.jp/lectures?",
+    "https://api.dtc.wide.ad.jp/bus?"
+];
+const fetchCache = new Map();
+
 async function fetchJson(url, label) {
+    const cacheable = FETCH_CACHE_PREFIXES.some(function (prefix) {
+        return url.startsWith(prefix);
+    });
+    if (cacheable) {
+        const cached = fetchCache.get(url);
+        if (cached && Date.now() - cached.at < FETCH_CACHE_TTL_MS) {
+            return cached.promise;
+        }
+        const promise = fetchJsonUncached(url, label);
+        fetchCache.set(url, { at: Date.now(), promise: promise });
+        promise.catch(function () { fetchCache.delete(url); });
+        if (fetchCache.size > 500) {
+            fetchCache.delete(fetchCache.keys().next().value);
+        }
+        return promise;
+    }
+    return fetchJsonUncached(url, label);
+}
+
+async function fetchJsonUncached(url, label) {
     const response = await fetch(url);
     if (!response.ok) {
         const error = new Error(
             label + "の取得に失敗しました: HTTP " + response.status
         );
         error.status = 502;
+        error.upstreamStatus = response.status;
         throw error;
     }
     return response.json();
@@ -2054,8 +2167,55 @@ app.get("/bus/:date", function (req, res) {
     res.sendFile(path.join(__dirname, "staticfile_public", "bus.html"));
 });
 
-app.get("/day/:date", function (req, res) {
-    res.sendFile(path.join(__dirname, "staticfile_public", "index.html"));
+/*
+ * 実績の表（1日 × 30分枠の x01〜x16・実測・予報）と監視用の状態。
+ */
+app.get(
+    "/api/status",
+    asyncRoute(async function (req, res) {
+        res.json(await records.getStatus());
+    })
+);
+
+app.get(
+    "/api/records",
+    asyncRoute(async function (req, res) {
+        res.json(await records.getHistory());
+    })
+);
+
+app.get(
+    "/api/records/:date",
+    asyncRoute(async function (req, res) {
+        res.json(await records.getDay(parseDateParam(req.params.date)));
+    })
+);
+
+app.get("/records/:date", function (req, res) {
+    res.sendFile(path.join(__dirname, "staticfile_public", "records.html"));
+});
+
+/* ためたデータの配布（GitHub Actions のバックアップが取りに来る）。 */
+app.get(
+    "/api/data-files",
+    asyncRoute(async function (req, res) {
+        res.json({ files: await records.listDataFiles() });
+    })
+);
+
+app.get("/data/*file", function (req, res) {
+    const relative = [].concat(req.params.file).join("/");
+    const filePath = records.resolveDataFile(relative);
+    if (!filePath || !fs.existsSync(filePath)) {
+        res.status(404).json({ error: "ファイルがありません。" });
+        return;
+    }
+    res.sendFile(filePath);
+});
+
+// アーカイブ（M7 の実データ版）の日別ページ
+app.get("/archive/day/:date", function (req, res) {
+    res.sendFile(path.join(__dirname, "staticfile_public", "archive.html"));
 });
 
 app.use(function (error, req, res, next) {
@@ -2072,6 +2232,7 @@ app.use(function (error, req, res, next) {
 async function startServer() {
     await initializeCrowdPersistence();
     await campusForecaster.initialize();
+    await backfiller.start();
 
     app.listen(port, function () {
         console.log("Server is running at http://localhost:" + port);
