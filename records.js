@@ -169,6 +169,64 @@ export function createRecords(options) {
         };
     }
 
+    /* その日の時間割の学事暦（授業API の保存分）。 */
+    async function readCalendar(date) {
+        const body = await readJson(path.join(dataDir, "lecture_snapshots", date + ".json")) ||
+            await readJson(path.join(dataDir, "lectures", date + ".json"));
+        const data = body && (body.data || body);
+        const cal = data && data.calendar;
+        if (!cal) return { status: "unknown" };
+        return {
+            status: cal.status === "closed" ? "closed" : "open",
+            reason: cal.reason || null,
+            week: cal.semesterClassIndex ?? null
+        };
+    }
+
+    /*
+     * 日付 → 30分ごとの人数の系列（バス混雑の予報が使う）。
+     * 予報は LightGBM B。当日と過去はその朝に出したもの（predictions_log）、
+     * 明日以降は最新の予報（predictions.csv）。
+     */
+    async function getSeries(date) {
+        const now = new Date();
+        const today = options.getTokyoDateString(now);
+        const parts = options.getTokyoTimeParts(now);
+        const file = date <= today ? "predictions_log.csv" : "predictions.csv";
+        const predictions = (await readCsvCached(path.join(mlDir, file)))
+            .filter(function (row) { return row.date === date; });
+        const predictionByBin = new Map(predictions.map(function (row) {
+            return [row.bin_start, toNumber(row.pred_B)];
+        }));
+        const actual = actualByDate().get(date) || new Map();
+        const bins = [];
+        for (let minute = FIRST_BIN; minute <= LAST_BIN; minute += BIN_MINUTES) bins.push(minute);
+        const forecast = bins.map(function (minute) {
+            const value = predictionByBin.get(minuteToTime(minute));
+            return value === undefined ? null : value;
+        });
+        const actualValues = bins.map(function (minute) {
+            const cell = actual.get(minuteToTime(minute));
+            return cell && cell.count >= MIN_SAMPLES ? Math.round(cell.sum / cell.count) : null;
+        });
+        const issuedAt = predictions.length > 0 ? predictions[0].issued_at || null : null;
+        const trained = await readJson(path.join(mlDir, "last_run.json"));
+        return {
+            bins: bins,
+            forecast: forecast.some(function (v) { return v !== null; }) ? forecast : null,
+            actual: actualValues.some(function (v) { return v !== null; }) ? actualValues : null,
+            forecastInfo: predictions.length > 0
+                ? {
+                    basis: date === today ? "same_day" : "day_before",
+                    issuedAt: issuedAt || (trained && trained.finishedAt) || null
+                }
+                : null,
+            today: today,
+            nowMinute: parts.hour * 60 + parts.minute,
+            calendar: await readCalendar(date)
+        };
+    }
+
     /* 予報を出した日ごとの誤差（実測との差の絶対値の平均）。変化を眺める用。 */
     async function getHistory() {
         const predictions = await readCsvCached(path.join(mlDir, "predictions_log.csv"));
@@ -299,6 +357,7 @@ export function createRecords(options) {
     return {
         getDay: getDay,
         getHistory: getHistory,
+        getSeries: getSeries,
         getStatus: getStatus,
         listDataFiles: listDataFiles,
         resolveDataFile: resolveDataFile

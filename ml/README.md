@@ -10,7 +10,7 @@
 | `crowd_snapshots.csv` | 5分ごとのキャンパス全体の端末数（正解 y の元） | `faapp_2.js` |
 | `building_readings.csv` | 5分ごとの建物ごとの端末数 | `datastore.js` |
 | `lecture_snapshots/YYYY-MM-DD.json` | その日の時間割と学事暦（毎日 06:00 と 21:00 に保存） | `datastore.js` |
-| `lectures/YYYY-MM-DD.json` | 予報用にキャッシュした時間割（アーカイブの M7 が使用） | `forecast.js` |
+| `lectures/YYYY-MM-DD.json` | 以前の予報（M7、削除済み）がキャッシュした時間割。あれば補助に使う | — |
 
 ## 本番での動き
 

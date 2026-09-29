@@ -83,9 +83,9 @@
 </head>
 <body>
     <header class="top">
-        <h1><a href="/records">実績の表</a></h1>
+        <h1><a href="/">実績の表</a></h1>
         <div class="meta">
-            <a href="/">キャンパス人数</a>
+            <a href="/bus">バス混雑予報</a>
             <a href="/about">このサイトについて</a>
             <a href="/mlstrategy">予報の戦略</a>
         </div>
@@ -122,6 +122,12 @@
                 <a class="btn" href="/data/ml/training_table.csv">全部の表（CSV）</a>
             </div>
             <div class="errors" id="errors"></div>
+            <div class="legend" style="margin-top:8px">
+                <span><i style="background:#1f2937"></i>実測</span>
+                <span><i style="background:var(--a)"></i>LightGBM A</span>
+                <span><i style="background:var(--b)"></i>LightGBM B</span>
+            </div>
+            <div id="dayChart"></div>
             <div class="table-wrap"><table id="table"></table></div>
             <p class="muted">
                 x01〜x11 と x12〜x16 は毎朝4時に作る表から、実測は5分ごとの値からその場でまとめています。
@@ -310,6 +316,58 @@
 
         let currentDate = null;
 
+        /* その日の実測（点と線）と、その朝に出した予報 A・B（線）。 */
+        function renderDayChart(day) {
+            const box = document.getElementById("dayChart");
+            const series = [
+                ["pred_A", "#2563eb", false],
+                ["pred_B", "#0d9488", false],
+                ["y_people", "#1f2937", true]
+            ];
+            const values = day.rows.flatMap(function (row) {
+                return series.map(function (s) { return row[s[0]]; });
+            }).filter(function (v) { return v !== null && v !== undefined; });
+            if (values.length === 0) {
+                box.innerHTML = '<p class="muted">この日の実測も予報もまだありません。</p>';
+                return;
+            }
+            const W = 900, H = 260, L = 44, R = 12, T = 12, B = 28;
+            const n = day.rows.length;
+            const max = Math.max(50, ...values) * 1.08;
+            const x = function (i) { return L + i * (W - L - R) / (n - 1); };
+            const y = function (v) { return T + (1 - v / max) * (H - T - B); };
+            let svg = '<svg class="chart" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="この日の実測と予報">';
+            for (let k = 0; k <= 4; k += 1) {
+                const v = max * k / 4;
+                svg += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="#e5e7eb"/>' +
+                    '<text x="' + (L - 6) + '" y="' + (y(v) + 4) + '" font-size="11" text-anchor="end" fill="#6b7280">' + Math.round(v) + "</text>";
+            }
+            day.rows.forEach(function (row, i) {
+                if (row.bin_start.endsWith(":00") && Number(row.bin_start.slice(0, 2)) % 2 === 1) {
+                    svg += '<text x="' + x(i) + '" y="' + (H - 8) + '" font-size="11" text-anchor="middle" fill="#6b7280">' +
+                        Number(row.bin_start.slice(0, 2)) + "時</text>";
+                }
+            });
+            series.forEach(function (s) {
+                let path = "";
+                day.rows.forEach(function (row, i) {
+                    const v = row[s[0]];
+                    if (v === null || v === undefined) { path += " "; return; }
+                    path += (path === "" || path.endsWith(" ") ? "M" : "L") + x(i).toFixed(1) + "," + y(v).toFixed(1);
+                });
+                svg += '<path d="' + path.trim() + '" fill="none" stroke="' + s[1] + '" stroke-width="' + (s[2] ? 2.5 : 2) + '"' +
+                    (s[2] ? "" : ' stroke-dasharray="6 4"') + "/>";
+                if (s[2]) {
+                    day.rows.forEach(function (row, i) {
+                        if (row.y_people === null) return;
+                        svg += '<circle cx="' + x(i) + '" cy="' + y(row.y_people) + '" r="3" fill="' + s[1] + '"><title>' +
+                            row.bin_start + " 実測 " + Math.round(row.y_people) + "人</title></circle>";
+                    });
+                }
+            });
+            box.innerHTML = svg + "</svg>";
+        }
+
         async function renderDay(date) {
             currentDate = date;
             document.getElementById("dateInput").value = date;
@@ -356,6 +414,7 @@
                 }).join("") + "</tr>";
             });
             table.innerHTML = html + "</tbody>";
+            renderDayChart(day);
 
             const csv = document.getElementById("csv");
             csv.href = URL.createObjectURL(new Blob([toCsv(day.rows)], { type: "text/csv" }));

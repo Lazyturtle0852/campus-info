@@ -2,7 +2,7 @@ import express from "express";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
-import { createCampusForecaster, getRoomNames } from "./forecast.js";
+import { getRoomNames } from "./rooms.js";
 import { createDataStore, getReadingDeviceCount } from "./datastore.js";
 import { createBusForecaster } from "./busforecast.js";
 import { createBackfiller } from "./backfill.js";
@@ -52,15 +52,7 @@ const DEFAULT_ASSUMPTIONS = {
     busUseRate: 0.45,
     routeShare: 1
 };
-const campusForecaster = createCampusForecaster({
-    dataDir: CROWD_DATA_DIR,
-    classroomInfo: classroomInfo,
-    fetchJson: fetchJson,
-    getSnapshots: function () { return crowdHistoryState.snapshots; },
-    getTokyoTimeParts: getTokyoTimeParts,
-    getTokyoDateString: getTokyoDateString,
-    devicesPerPerson: DEFAULT_DEVICES_PER_PERSON
-});
+
 const outboundBusCache = new Map();
 const dataStore = createDataStore({
     dataDir: CROWD_DATA_DIR,
@@ -95,9 +87,9 @@ const records = createRecords({
 });
 
 app.use(express.json());
-// トップは実データ版。GitHub Pages と同じ見本（ダミー）は /sample に置く。
+// トップは実績の表（LightGBM の予報と実測）。見本（ダミー）は /sample に置く。
 app.get("/", function (req, res) {
-    res.sendFile(path.join(__dirname, "staticfile_public", "archive.html"));
+    res.sendFile(path.join(__dirname, "staticfile_public", "records.html"));
 });
 app.get("/sample", function (req, res) {
     res.sendFile(path.join(__dirname, "staticfile_public", "index.html"));
@@ -1996,90 +1988,6 @@ async function getOutboundBusData(date) {
     return data;
 }
 
-/*
- * 予報した人数に現行の式を当てはめた、1時間ごとのバスの目安。
- * 帰り：人数 × 帰宅率 × バス利用率、来る：次の1時間の人数の増加分。
- */
-async function getHourlyBusOutlook(date, forecastValues, bins) {
-    if (!forecastValues) return null;
-
-    let outboundData = null;
-    try {
-        outboundData = await getOutboundBusData(date);
-    } catch (error) {
-        console.error("バス情報の取得に失敗しました。", error);
-    }
-    const inboundData = getInboundBusData(date);
-
-    function valueAt(minute) {
-        const index = bins.indexOf(minute);
-        return index >= 0 ? forecastValues[index] : null;
-    }
-
-    const rows = [];
-    for (let hour = 7; hour <= 21; hour += 1) {
-        const start = minutesToTime(hour * 60);
-        const end = minutesToTime((hour + 1) * 60);
-        const stock = [valueAt(hour * 60), valueAt(hour * 60 + 30)]
-            .filter(function (v) { return v !== null; });
-        if (stock.length === 0) continue;
-        const population = Math.round(
-            stock.reduce(function (a, b) { return a + b; }, 0) / stock.length
-        );
-        const nextValue = valueAt((hour + 1) * 60);
-        const increase = nextValue === null
-            ? null
-            : nextValue - valueAt(hour * 60);
-
-        const outboundCounts = outboundData
-            ? countBusesByRoute(outboundData, start, end)
-            : null;
-        const outboundCapacity = outboundCounts
-            ? calculateTransportCapacity(outboundCounts).totalCapacity
-            : null;
-        const inboundCounts = countBusesByRoute(inboundData, start, end);
-        const inboundCapacity =
-            calculateTransportCapacity(inboundCounts).totalCapacity;
-
-        rows.push({
-            hour: hour,
-            population: population,
-            toShonandai: outboundCounts
-                ? {
-                    buses: Object.values(outboundCounts).reduce(function (a, b) { return a + b; }, 0),
-                    crowding: calculateCrowding(
-                        population,
-                        outboundCapacity,
-                        DEFAULT_ASSUMPTIONS
-                    )
-                }
-                : null,
-            toSfc: increase === null
-                ? null
-                : {
-                    buses: Object.values(inboundCounts).reduce(function (a, b) { return a + b; }, 0),
-                    crowding: calculateInboundCrowding(
-                        {
-                            status: "available",
-                            quality: "valid",
-                            estimatedPopulationDelta: increase,
-                            intervalMinutes: 60
-                        },
-                        inboundCapacity,
-                        start,
-                        end
-                    )
-                }
-        });
-    }
-
-    return {
-        assumptions: DEFAULT_ASSUMPTIONS,
-        outboundAvailable: Boolean(outboundData),
-        rows: rows
-    };
-}
-
 function parseDateParam(value) {
     const date = String(value || "");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) ||
@@ -2091,57 +1999,14 @@ function parseDateParam(value) {
     return date;
 }
 
-app.get(
-    "/api/campus/overview",
-    asyncRoute(async function (req, res) {
-        const now = new Date();
-        const overview = await campusForecaster.getOverview(now);
-        const today = overview.days.find(function (day) {
-            return day.date === overview.today;
-        });
-        overview.todayBus = await getHourlyBusOutlook(
-            overview.today,
-            today && today.forecast ? today.forecast.values : null,
-            overview.bins
-        );
-        res.json(overview);
-    })
-);
-
-app.get(
-    "/api/campus/day/:date",
-    asyncRoute(async function (req, res) {
-        const date = parseDateParam(req.params.date);
-        const day = await campusForecaster.getDay(date, new Date());
-        day.bus = await getHourlyBusOutlook(
-            date,
-            day.forecast ? day.forecast.values : null,
-            day.bins
-        );
-        res.json(day);
-    })
-);
-
 /*
  * バス混雑の予報（別ページ）。キャンパス人数の予報とは
- * 「日付 → 30分ごとの人数」の受け渡しだけでつながる。
+ * 「日付 → 30分ごとの人数」の受け渡しだけでつながる。人数は LightGBM（B）の予報と実測。
  */
 const busForecaster = createBusForecaster({
     capacities: ROUTE_CAPACITIES,
-    getCampusSeries: async function (date) {
-        const day = await campusForecaster.getDay(date, new Date());
-        return {
-            bins: day.bins,
-            forecast: day.forecast ? day.forecast.values : null,
-            actual: day.actual,
-            forecastInfo: day.forecast
-                ? { basis: day.forecast.basis, issuedAt: day.forecast.issuedAt }
-                : null,
-            today: day.today,
-            nowMinute: day.nowMinute,
-            type: day.type,
-            calendar: day.calendar
-        };
+    getCampusSeries: function (date) {
+        return records.getSeries(date);
     },
     getDepartures: async function (date, direction) {
         const data = direction === "to_sfc"
@@ -2212,11 +2077,6 @@ app.get("/data/*file", function (req, res) {
     res.sendFile(filePath);
 });
 
-// アーカイブ（M7 の実データ版）の日別ページ
-app.get("/archive/day/:date", function (req, res) {
-    res.sendFile(path.join(__dirname, "staticfile_public", "archive.html"));
-});
-
 app.use(function (error, req, res, next) {
     console.error(error);
     if (res.headersSent) {
@@ -2230,7 +2090,6 @@ app.use(function (error, req, res, next) {
 
 async function startServer() {
     await initializeCrowdPersistence();
-    await campusForecaster.initialize();
     await backfiller.start();
 
     app.listen(port, function () {
