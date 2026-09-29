@@ -85,7 +85,7 @@ certbot --apache -d campus-info.lazyta-toru.net --redirect
 | `DEPLOY_HOST` | `160.251.210.209` |
 | `DEPLOY_SSH_KEY` | `~/.ssh/campus-info-deploy`（秘密鍵）の中身。`base64 -i ~/.ssh/campus-info-deploy` の1行でも可 |
 | `DEPLOY_KNOWN_HOSTS` | `ssh-keyscan -t ed25519 160.251.210.209` の出力 |
-| `CLASSROOMS_B64` | `base64 -i private-data/kyousitu_size.json` の出力（教室定員。公開しない） |
+| `CLASSROOMS_B64` | 任意。教室定員の JSON があれば `base64 -i kyousitu_size.json` の出力。無ければ空か未設定（どの教室も 50人 × 0.7 で数える） |
 | `HC_COLLECT_URL` | healthchecks.io の「取得」チェックの ping URL |
 | `HC_TRAIN_URL` | healthchecks.io の「学習」チェックの ping URL |
 

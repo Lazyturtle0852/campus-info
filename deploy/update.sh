@@ -5,7 +5,7 @@
 # authorized_keys の command= でこのスクリプトしか動かせないようにしてある（DEPLOY.md）。
 #
 # 標準入力には、GitHub Secrets から組み立てた次の行が来る（無ければ今あるものを使う）。
-#   CLASSROOMS_B64=<教室定員 JSON を base64 にしたもの>
+#   CLASSROOMS_B64=<教室定員 JSON を base64 にしたもの>（任意。DTC API に定員は無い）
 #   HC_COLLECT_URL=<healthchecks.io の URL（取得）>
 #   HC_TRAIN_URL=<healthchecks.io の URL（学習）>
 #
@@ -35,8 +35,7 @@ main() {
     echo "    教室定員を更新しました"
   fi
   if [ ! -f private-data/kyousitu_size.json ]; then
-    echo "private-data/kyousitu_size.json がありません（Secrets の CLASSROOMS_B64 を確認）" >&2
-    exit 1
+    echo "    教室定員のファイルは無し（どの教室も既定の定員で数えます）"
   fi
 
   if grep -qE '^HC_(COLLECT|TRAIN)_URL=' "$input"; then

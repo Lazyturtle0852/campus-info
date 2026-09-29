@@ -119,12 +119,11 @@ function loadClassroomInfo() {
         return fs.existsSync(candidate);
     });
 
+    // DTC API には教室の定員が無い。ファイルが無ければ、どの教室も
+    // 「定員が分からない教室」（既定の人数）として数える。
     if (!filePath) {
-        throw new Error(
-            "教室情報JSONが見つかりません。" +
-            "sfc_classrooms.json、kyousitu_size.json、" +
-            "またはCLASSROOM_INFO_PATHを指定してください。"
-        );
+        console.warn("教室情報JSONが無いので、教室の定員はすべて既定値で数えます。");
+        return {};
     }
 
     return JSON.parse(fs.readFileSync(filePath, "utf8"));
