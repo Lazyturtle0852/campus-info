@@ -17,7 +17,7 @@ services:
     restart: unless-stopped
     # 外から届く経路は Apache の vhost（deploy/apache/）だけにする
     ports:
-      - "127.0.0.1:${APP_PORT:-3010}:3000"
+      - "127.0.0.1:${APP_PORT:-3021}:3000"
     env_file:
       - path: .env
         required: false

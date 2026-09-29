@@ -58,7 +58,7 @@ main() {
   echo "==> 確認"
   local port
   port="$(grep -E '^APP_PORT=' .env 2>/dev/null | cut -d= -f2 || true)"
-  port="${port:-3010}"
+  port="${port:-3021}"
   for _ in $(seq 1 30); do
     if curl -fsS -o /dev/null "http://127.0.0.1:$port/api/status"; then
       curl -fsS "http://127.0.0.1:$port/api/status" | head -c 400; echo

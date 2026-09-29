@@ -10,9 +10,9 @@ GitHub (main へ push)
                  ├─ Secrets から教室定員と healthchecks の URL を書く
                  ├─ git reset --hard origin/main
                  └─ docker compose up -d --build
-                      ├─ dashboard（:3010、5分ごとの取得・取り直し・画面）  mem 256MB
+                      ├─ dashboard（:3021、5分ごとの取得・取り直し・画面）  mem 256MB
                       └─ trainer  （毎朝4時に学習して予報）              mem 512MB
-Apache (campus-info.lazyta-toru.net) → 127.0.0.1:3010
+Apache (campus-info.lazyta-toru.net) → 127.0.0.1:3021
 ```
 
 ## 最初の1回だけ（VPS で手作業）
@@ -56,10 +56,10 @@ sudo -u deploy-campus git clone https://github.com/Lazyturtle0852/campus-info.gi
 ### 4. ポートが空いているか確かめる
 
 ```sh
-ss -ltnp | grep ':3010 ' || echo "3010 は空いています"
+ss -ltnp | grep ':3021 ' || echo "3021 は空いています"
 ```
 
-使われていたら、`compose.yaml` の `APP_PORT` の既定値と `deploy/apache/campus-info.lazyta-toru.net.conf` の 3010 を別の番号にそろえて push します。
+使われていたら、`compose.yaml` の `APP_PORT` の既定値と `deploy/apache/campus-info.lazyta-toru.net.conf` の 3021 を別の番号にそろえて push します。
 
 ### 5. Cloudflare の DNS
 

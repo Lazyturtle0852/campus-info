@@ -1,6 +1,6 @@
 # Raspberry Pi / Ubuntu Server での起動
 
-> 本番（campus-info.lazyta-toru.net）は VPS で動かしています。手順は `DEPLOY.md` を見てください。ここは手元や Pi で1台だけ動かすときのメモです（`compose.yaml` は本番用に `trainer` と `APP_PORT`=3010 を含みます）。
+> 本番（campus-info.lazyta-toru.net）は VPS で動かしています。手順は `DEPLOY.md` を見てください。ここは手元や Pi で1台だけ動かすときのメモです（`compose.yaml` は本番用に `trainer` と `APP_PORT`=3021 を含みます）。
 
 `faapp_2.js` を単一のDockerコンテナとして動かします。ホストにNode.jsは不要ですが、Docker EngineとDocker Composeプラグインが必要です。
 
