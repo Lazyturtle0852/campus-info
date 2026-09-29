@@ -3,7 +3,7 @@
 SFC のキャンパス人数を Wi-Fi 接続数（DTC API）から数え、LightGBM で毎朝その日の30分ごとの人数を予報し、答え合わせを記録するサイトです。
 
 - 本番: https://campus-info.lazyta-toru.net （このサイトについて: `/about`、実績の表: `/records`）
-- 見本（ダミーデータ）と説明ページ: https://lazyturtle0852.github.io/campus-info/
+- 見本（ダミーデータ）: https://campus-info.lazyta-toru.net/sample
 - ためたデータ: `data` ブランチ（毎晩保存）
 
 | 場所 | 中身 |
@@ -12,4 +12,3 @@ SFC のキャンパス人数を Wi-Fi 接続数（DTC API）から数え、Light
 | `ml/` | 学習用の表づくりと LightGBM。本番では `trainer` コンテナが毎朝4時に動かす（`ml/README.md`） |
 | `compose.yaml` / `deploy/` | 本番の構成とデプロイ（`DEPLOY.md`） |
 | `staticfile_public/` | 画面 |
-| `scripts/build_pages.py` | GitHub Pages 用の見本サイトを組み立てる |

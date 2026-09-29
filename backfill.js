@@ -27,6 +27,8 @@ export function createBackfiller(options) {
     const fromDate = options.from;
     const intervalMs = options.intervalMs || 2000;
     let running = false;
+    let lastError = null;
+    let progress = null;
     let timer = null;
     let state = { checkedThrough: null, lastRun: null, current: null };
 
@@ -75,6 +77,12 @@ export function createBackfiller(options) {
                 if (!retryable || attempt >= RETRY_WAITS_MS.length) throw error;
                 console.warn("取り直しを待ちます（" + (status || error.message) + "）: " +
                     RETRY_WAITS_MS[attempt] / 1000 + "秒");
+                lastError = {
+                    at: new Date().toISOString(),
+                    slot: slot.toISOString(),
+                    status: status || null,
+                    waitSeconds: RETRY_WAITS_MS[attempt] / 1000
+                };
                 await sleep(RETRY_WAITS_MS[attempt]);
             }
         }
@@ -123,6 +131,7 @@ export function createBackfiller(options) {
                     console.error("取り直しに失敗しました: " + slot.toISOString(), error.message);
                 }
 
+                progress = { startedAt: startedAt.toISOString(), at: slot.toISOString(), ...counts };
                 if ((counts.saved + counts.empty + counts.failed) % SAVE_STATE_EVERY === 0) {
                     state.checkedThrough = slot.toISOString();
                     state.current = { startedAt: startedAt.toISOString(), ...counts };
@@ -133,6 +142,7 @@ export function createBackfiller(options) {
             state.checkedThrough = new Date(end).toISOString();
         } finally {
             state.current = null;
+            progress = null;
             state.lastRun = {
                 startedAt: startedAt.toISOString(),
                 finishedAt: new Date().toISOString(),
@@ -168,7 +178,9 @@ export function createBackfiller(options) {
             from: fromDate || null,
             running: running,
             checkedThrough: state.checkedThrough,
-            current: state.current,
+            // いま取り直している時刻と件数（ディスクには50件ごとにしか書かないので、こちらが最新）
+            current: progress || state.current,
+            lastError: lastError,
             lastRun: state.lastRun
         };
     }

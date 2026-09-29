@@ -218,7 +218,9 @@
                         cls: b.running ? "warn" : b.from ? "ok" : "",
                         title: "過去分の取り直し",
                         value: b.running ? "実行中" : b.from ? "待機中" : "なし",
-                        note: b.checkedThrough ? formatTime(b.checkedThrough) + " まで確認済み" : (b.from ? b.from + " から" : "")
+                        note: b.current
+                            ? formatTime(b.current.at) + " の分まで（保存 " + b.current.saved + "・データ無し " + b.current.empty + "）"
+                            : b.checkedThrough ? formatTime(b.checkedThrough) + " まで確認済み" : (b.from ? b.from + " から" : "")
                     },
                     {
                         cls: !t ? "" : t.status === "ok" ? "ok" : t.status === "skipped" ? "warn" : "bad",

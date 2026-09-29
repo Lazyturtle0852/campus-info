@@ -96,10 +96,6 @@ certbot --apache -d campus-info.lazyta-toru.net --redirect
 | campus-info 取得 | 5 分 | 20 分 | 5分ごとの取得が止まった、または建物の値が1つも取れなかった（/fail） |
 | campus-info 学習 | 1 日 | 2 時間 | 毎朝4時の学習が来ない、または失敗した（/fail） |
 
-### Pages
-
-Settings → Pages → Source を **GitHub Actions** にします（見本と説明ページが `https://lazyturtle0852.github.io/campus-info/` に出ます）。
-
 ## 初回のデプロイ
 
 Secrets をそろえたら、Actions の **deploy** を手動で実行します（Run workflow）。最後に `/api/status` の中身とコンテナの状態が出れば成功です。
