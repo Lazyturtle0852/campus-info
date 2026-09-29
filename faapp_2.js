@@ -69,7 +69,14 @@ const backfiller = createBackfiller({
     getTokyoDateString: getTokyoDateString,
     hasSnapshotNear: hasSnapshotNear,
     ingest: function (crowdData) {
-        return enqueueCrowdObservation(crowdData, new Date());
+        return enqueueCrowdObservation(crowdData, new Date(), { deferStatistics: true });
+    },
+    flushStatistics: function () {
+        const operation = crowdWriteQueue.then(function () {
+            return writeBuildingStatisticsCsv(crowdHistoryState);
+        });
+        crowdWriteQueue = operation.catch(function () {});
+        return operation;
     },
     ensureLectures: async function (date) {
         if (dataStore.hasLectureSnapshot(date)) return;
@@ -945,10 +952,16 @@ function saveCrowdObservation(state, crowdData, fetchedAt) {
         normalized.snapshot.measuredAt
     );
 
-    state.snapshots.push(normalized.snapshot);
-    state.snapshots.sort(function (a, b) {
-        return new Date(a.measuredAt) - new Date(b.measuredAt);
-    });
+    // 取り直しで古い時刻が後から大量に来るので、毎回並べ直さず、二分探索で差し込む。
+    const time = new Date(normalized.snapshot.measuredAt).getTime();
+    let low = 0;
+    let high = state.snapshots.length;
+    while (low < high) {
+        const middle = (low + high) >> 1;
+        if (new Date(state.snapshots[middle].measuredAt).getTime() <= time) low = middle + 1;
+        else high = middle;
+    }
+    state.snapshots.splice(low, 0, normalized.snapshot);
 
     return { status: "saved", snapshot: normalized.snapshot };
 }
@@ -1401,7 +1414,7 @@ async function writeBuildingStatisticsCsv(state) {
     await fs.promises.rename(temporaryPath, BUILDING_STATISTICS_PATH);
 }
 
-async function persistCrowdObservation(crowdData, fetchedAt) {
+async function persistCrowdObservation(crowdData, fetchedAt, persistOptions) {
     const result = saveCrowdObservation(
         crowdHistoryState,
         crowdData,
@@ -1411,14 +1424,17 @@ async function persistCrowdObservation(crowdData, fetchedAt) {
     if (result.status === "duplicate") return result;
 
     await appendCrowdSnapshot(result.snapshot);
-    await writeBuildingStatisticsCsv(crowdHistoryState);
+    // 取り直しでまとめて入れるときは、統計ファイルの書き出しを最後の1回にまとめる。
+    if (!(persistOptions && persistOptions.deferStatistics)) {
+        await writeBuildingStatisticsCsv(crowdHistoryState);
+    }
     await dataStore.appendBuildingReadings(crowdData, result.snapshot.measuredAt);
     return result;
 }
 
-function enqueueCrowdObservation(crowdData, fetchedAt) {
+function enqueueCrowdObservation(crowdData, fetchedAt, persistOptions) {
     const operation = crowdWriteQueue.then(function () {
-        return persistCrowdObservation(crowdData, fetchedAt);
+        return persistCrowdObservation(crowdData, fetchedAt, persistOptions);
     });
 
     crowdWriteQueue = operation.catch(function () {

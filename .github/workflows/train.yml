@@ -1,0 +1,37 @@
+# 朝4時を待たずに、学習ジョブ（build_table.py → train.py）をいますぐ1回動かす。
+# デプロイと同じ鍵で update.sh を呼び、標準入力で ACTION=train を渡す。
+name: train
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: SSH の鍵と known_hosts を用意する
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          if printf '%s' "$KEY" | grep -q 'BEGIN'; then
+            printf '%s\n' "$KEY" > ~/.ssh/id_ed25519
+          else
+            printf '%s' "$KEY" | tr -d ' \n' | base64 -d > ~/.ssh/id_ed25519
+          fi
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: 学習する
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: printf 'ACTION=train\n' | ssh -o BatchMode=yes "deploy-campus@$HOST"

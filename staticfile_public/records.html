@@ -226,7 +226,7 @@
                         title: "過去分の取り直し",
                         value: b.running ? "実行中" : b.from ? "待機中" : "なし",
                         note: b.current
-                            ? formatTime(b.current.at) + " の分まで（保存 " + b.current.saved + "・データ無し " + b.current.empty + "）"
+                            ? b.current.at + " の分を取得中（保存 " + b.current.saved.toLocaleString() + " 件）"
                             : b.checkedThrough ? formatTime(b.checkedThrough) + " まで確認済み" : (b.from ? b.from + " から" : "")
                     },
                     {

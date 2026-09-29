@@ -2,35 +2,30 @@ import * as fs from "fs";
 import * as path from "path";
 
 /*
- * 5分ごとの取得が抜けた分を、/crowd?time=（過去の時刻も引ける）で取り直す。
+ * 5分ごとの取得が抜けた分を、/crowd/range（期間を指定すると5分ごとの値をまとめて返す）で取り直す。
  *
- * - 初回は BACKFILL_FROM の日から今までを、2秒に1回のペースで埋める（半日ほどかかる）。
- *   API が 429（呼びすぎ）や 5xx を返したら、しばらく待って同じ時刻を取り直す。
+ * - 1日（日本時間の0時〜24時）ずつ、1回の呼び出しで取る。初回は BACKFILL_FROM の日から今まで
+ *   （2026-07-09 より前は API にデータが無い）。1日あたり数秒なので、全体でも数分で終わる。
  * - 以降は6時間ごとに、直近2日分だけを見直す。
  * - どこまで見たかは backfill_state.json に残すので、再起動しても続きから始まる。
  * - 抜けた日の時間割も、授業APIから取っておく（学習用の表の x の元）。
  */
 
 const SLOT_MS = 5 * 60 * 1000;
-const RECHECK_MS = 48 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const RECHECK_DAYS = 2;
 const RUN_EVERY_MS = 6 * 60 * 60 * 1000;
-// 学習に使うのは 7:00〜21:59。建物ごとの統計のために前後へ少し広げる。
-const FIRST_HOUR = 6;
-const LAST_HOUR = 22;
-// 計測時刻より生データがこれ以上古ければ「その時刻のデータは無い」とみなす。
-const STALE_RAW_MS = 15 * 60 * 1000;
-const SAVE_STATE_EVERY = 50;
+const PAUSE_BETWEEN_DAYS_MS = 3000;
 const RETRY_WAITS_MS = [30 * 1000, 60 * 1000, 2 * 60 * 1000, 5 * 60 * 1000, 10 * 60 * 1000];
 
 export function createBackfiller(options) {
     const statePath = path.join(options.dataDir, "backfill_state.json");
     const fromDate = options.from;
-    const intervalMs = options.intervalMs || 2000;
     let running = false;
+    let timer = null;
     let lastError = null;
     let progress = null;
-    let timer = null;
-    let state = { checkedThrough: null, lastRun: null, current: null };
+    let state = { checkedThrough: null, lastRun: null };
 
     function sleep(ms) {
         return new Promise(function (resolve) { setTimeout(resolve, ms); });
@@ -53,95 +48,120 @@ export function createBackfiller(options) {
         await fs.promises.rename(temporaryPath, statePath);
     }
 
-    function tokyoHour(date) {
-        return (date.getUTCHours() + 9) % 24;
+    function addDays(date, days) {
+        const d = new Date(date + "T12:00:00+09:00");
+        d.setUTCDate(d.getUTCDate() + days);
+        return d.toISOString().slice(0, 10);
     }
 
-    function hasRawData(crowdData) {
-        if (!crowdData || !crowdData.latestRawAt || !crowdData.measuredAt) return false;
-        const lag = new Date(crowdData.measuredAt) - new Date(crowdData.latestRawAt);
-        return Number.isFinite(lag) && lag <= STALE_RAW_MS;
-    }
-
-    /* 429 や 5xx は相手の都合なので、待ってから同じ時刻をもう一度取りに行く。 */
-    async function fetchWithRetry(slot) {
+    /* 429（呼びすぎ）・503（混雑）・5xx は相手の都合なので、待ってから同じ日をもう一度取る。 */
+    async function fetchRange(start, end) {
+        const url = "https://api.dtc.wide.ad.jp/crowd/range?startTime=" +
+            start.toISOString() + "&endTime=" + end.toISOString();
         for (let attempt = 0; ; attempt += 1) {
             try {
-                return await options.fetchJson(
-                    "https://api.dtc.wide.ad.jp/crowd?time=" + slot.toISOString(),
-                    "キャンパス混雑情報（取り直し）"
-                );
+                return await options.fetchJson(url, "キャンパス混雑情報（期間）");
             } catch (error) {
                 const status = error.upstreamStatus;
                 const retryable = status === 429 || (status >= 500 && status < 600) || !status;
                 if (!retryable || attempt >= RETRY_WAITS_MS.length) throw error;
-                console.warn("取り直しを待ちます（" + (status || error.message) + "）: " +
-                    RETRY_WAITS_MS[attempt] / 1000 + "秒");
                 lastError = {
                     at: new Date().toISOString(),
-                    slot: slot.toISOString(),
+                    range: start.toISOString(),
                     status: status || null,
                     waitSeconds: RETRY_WAITS_MS[attempt] / 1000
                 };
+                console.warn("取り直しを待ちます（" + (status || error.message) + "）: " +
+                    RETRY_WAITS_MS[attempt] / 1000 + "秒");
                 await sleep(RETRY_WAITS_MS[attempt]);
             }
         }
+    }
+
+    /*
+     * /crowd/range の「建物ごとの時系列」を、/crowd と同じ形の5分ごとの値に組み直す。
+     * 同じ5分枠に同じ建物の値が2つあれば、後のほうを使う。
+     */
+    function toSnapshots(body) {
+        const slots = new Map();
+        (body.readings || []).forEach(function (reading) {
+            const times = reading.measuredAts || [];
+            times.forEach(function (measuredAt, i) {
+                const time = new Date(measuredAt).getTime();
+                if (!Number.isFinite(time)) return;
+                const slot = Math.floor(time / SLOT_MS) * SLOT_MS;
+                if (!slots.has(slot)) slots.set(slot, { latestRaw: time, buildings: new Map() });
+                const entry = slots.get(slot);
+                entry.latestRaw = Math.max(entry.latestRaw, time);
+                entry.buildings.set(reading.buildingKey, {
+                    areaKey: reading.areaKey,
+                    buildingKey: reading.buildingKey,
+                    areaKeys: reading.areaKeys,
+                    totalClientCount: (reading.totalClientCounts || [])[i] ?? null,
+                    excludedClientCount: (reading.excludedClientCounts || [])[i] ?? null,
+                    clientCount: (reading.clientCounts || [])[i] ?? null
+                });
+            });
+        });
+        return Array.from(slots.keys()).sort(function (a, b) { return a - b; }).map(function (slot) {
+            const entry = slots.get(slot);
+            return {
+                type: "building-crowd-snapshot",
+                generatedAt: body.generatedAt || null,
+                measuredAt: new Date(slot).toISOString(),
+                latestRawAt: new Date(entry.latestRaw).toISOString(),
+                readings: Array.from(entry.buildings.values())
+            };
+        });
     }
 
     async function run() {
         if (running || !fromDate) return;
         running = true;
         const startedAt = new Date();
-        const fromMs = new Date(fromDate + "T00:00:00+09:00").getTime();
-        const resumeMs = state.checkedThrough
-            ? new Date(state.checkedThrough).getTime() - RECHECK_MS
-            : fromMs;
-        let cursor = Math.ceil(Math.max(fromMs, resumeMs) / SLOT_MS) * SLOT_MS;
-        const end = Math.floor((Date.now() - 10 * 60 * 1000) / SLOT_MS) * SLOT_MS;
-        const counts = { checked: 0, saved: 0, empty: 0, failed: 0 };
-        let lastDate = null;
+        const today = options.getTokyoDateString(startedAt);
+        // 取り直しの開始日を変えたら、最初からやり直す
+        if (state.from !== fromDate) {
+            state = { from: fromDate, checkedThrough: null, lastRun: state.lastRun };
+        }
+        const resumeDate = state.checkedThrough
+            ? addDays(options.getTokyoDateString(new Date(state.checkedThrough)), -RECHECK_DAYS)
+            : fromDate;
+        const counts = { days: 0, saved: 0, skipped: 0, failedDays: 0 };
 
         try {
-            for (; cursor <= end; cursor += SLOT_MS) {
-                const slot = new Date(cursor);
-                const hour = tokyoHour(slot);
-                if (hour < FIRST_HOUR || hour > LAST_HOUR) continue;
+            for (let date = resumeDate < fromDate ? fromDate : resumeDate; date <= today; date = addDays(date, 1)) {
+                progress = { startedAt: startedAt.toISOString(), at: date, ...counts };
+                await options.ensureLectures(date).catch(function (error) {
+                    console.error("過去の時間割の取得に失敗しました: " + date, error.message);
+                });
 
-                const date = options.getTokyoDateString(slot);
-                if (date !== lastDate) {
-                    lastDate = date;
-                    await options.ensureLectures(date).catch(function (error) {
-                        console.error("過去の時間割の取得に失敗しました: " + date, error.message);
-                    });
-                }
-
-                counts.checked += 1;
-                if (options.hasSnapshotNear(slot.toISOString())) continue;
+                const start = new Date(date + "T00:00:00+09:00");
+                // 今日の分は、まだ処理が済んでいない直近10分を避ける
+                const end = new Date(Math.min(start.getTime() + DAY_MS, Date.now() - 10 * 60 * 1000));
+                if (end <= start) break;
 
                 try {
-                    const crowdData = await fetchWithRetry(slot);
-                    if (hasRawData(crowdData)) {
-                        await options.ingest(crowdData);
+                    const body = await fetchRange(start, end);
+                    for (const snapshot of toSnapshots(body)) {
+                        if (options.hasSnapshotNear(snapshot.measuredAt)) {
+                            counts.skipped += 1;
+                            continue;
+                        }
+                        await options.ingest(snapshot);
                         counts.saved += 1;
-                    } else {
-                        counts.empty += 1;
                     }
-                } catch (error) {
-                    counts.failed += 1;
-                    console.error("取り直しに失敗しました: " + slot.toISOString(), error.message);
-                }
-
-                progress = { startedAt: startedAt.toISOString(), at: slot.toISOString(), ...counts };
-                if ((counts.saved + counts.empty + counts.failed) % SAVE_STATE_EVERY === 0) {
-                    state.checkedThrough = slot.toISOString();
-                    state.current = { startedAt: startedAt.toISOString(), ...counts };
+                    await options.flushStatistics();
+                    state.checkedThrough = end.toISOString();
                     await saveState();
+                } catch (error) {
+                    counts.failedDays += 1;
+                    console.error("取り直しに失敗しました: " + date, error.message);
                 }
-                await sleep(intervalMs);
+                counts.days += 1;
+                await sleep(PAUSE_BETWEEN_DAYS_MS);
             }
-            state.checkedThrough = new Date(end).toISOString();
         } finally {
-            state.current = null;
             progress = null;
             state.lastRun = {
                 startedAt: startedAt.toISOString(),
@@ -169,8 +189,8 @@ export function createBackfiller(options) {
 
     async function start() {
         await loadState();
-        // 起動直後の取得や学習用の読み込みとぶつからないよう、少し待ってから始める。
-        schedule(60 * 1000);
+        // 起動直後の取得とぶつからないよう、少し待ってから始める。
+        schedule(30 * 1000);
     }
 
     function getStatus() {
@@ -178,8 +198,7 @@ export function createBackfiller(options) {
             from: fromDate || null,
             running: running,
             checkedThrough: state.checkedThrough,
-            // いま取り直している時刻と件数（ディスクには50件ごとにしか書かないので、こちらが最新）
-            current: progress || state.current,
+            current: progress,
             lastError: lastError,
             lastRun: state.lastRun
         };

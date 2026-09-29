@@ -27,7 +27,7 @@ services:
       PORT: "3000"
       CROWD_DATA_DIR: /app/data
       CLASSROOM_INFO_PATH: /app/private-data/kyousitu_size.json
-      BACKFILL_FROM: ${BACKFILL_FROM:-2026-07-15}
+      BACKFILL_FROM: ${BACKFILL_FROM:-2026-07-09}
     volumes:
       - crowd_data:/app/data
       - ./private-data:/app/private-data:ro

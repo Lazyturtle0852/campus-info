@@ -8,6 +8,7 @@
 #   CLASSROOMS_B64=<教室定員 JSON を base64 にしたもの>（任意。DTC API に定員は無い）
 #   HC_COLLECT_URL=<healthchecks.io の URL（取得）>
 #   HC_TRAIN_URL=<healthchecks.io の URL（学習）>
+#   ACTION=train   … デプロイの代わりに、朝の学習ジョブをいますぐ1回動かす（.github/workflows/train.yml）
 #
 # 全体を main() に入れてあるのは、途中の git reset がこのファイル自身を書き換えるため
 # （bash は読みながら実行するので、関数にしておかないとずれた位置から読み直す）。
@@ -56,6 +57,13 @@ main() {
     mv .env.tmp .env
     chmod 600 .env
     echo "    .env を更新しました"
+  fi
+
+  if grep -qx 'ACTION=train' "$input"; then
+    echo "==> 学習ジョブをいますぐ動かす"
+    docker compose exec -T trainer bash run_daily.sh
+    docker compose exec -T trainer cat /data/ml/last_run.json
+    return 0
   fi
 
   echo "==> コンテナを作り直す"

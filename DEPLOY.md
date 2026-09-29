@@ -100,8 +100,8 @@ certbot --apache -d campus-info.lazyta-toru.net --redirect
 
 Secrets をそろえたら、Actions の **deploy** を手動で実行します（Run workflow）。最後に `/api/status` の中身とコンテナの状態が出れば成功です。
 
-- 起動の1分後から、2026-07-15 以降の過去分の取り直しが始まります（1秒に1回、数時間）。進み具合は `/records` の「過去分の取り直し」で見られます。
-- 学習は翌朝4時から。すぐに試すときは、VPS で一度だけ `docker compose -f /opt/campus-info/compose.yaml exec trainer bash run_daily.sh` を実行します。
+- 起動の30秒後から、2026-07-09（API にデータがある最初の日）以降の過去分の取り直しが始まります（1日1回の呼び出しで、数分で終わります）。進み具合は `/records` の「過去分の取り直し」で見られます。
+- 学習は毎朝4時。すぐに動かすときは Actions の **train** を手動で実行します（`gh workflow run train`）。
 - 翌朝 05:30 に **backup** が動き、データを `data` ブランチに保存します。
 
 ## 日々の運用
