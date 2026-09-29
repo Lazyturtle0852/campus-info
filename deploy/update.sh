@@ -34,7 +34,7 @@ main() {
   echo "==> 設定を受け取る"
   local input
   input="$(mktemp)"
-  trap 'rm -f "$input"' EXIT
+  trap 'rm -f "${input:-}"' EXIT
   cat > "$input"
 
   mkdir -p private-data
