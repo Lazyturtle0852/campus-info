@@ -1,0 +1,3 @@
+measured_at,fetched_at,generated_at,observed_device_count,estimated_missing_device_count,estimated_total_device_count,available_building_count,expected_building_count,missing_building_count,missing_buildings,unresolved_buildings,imputations,excluded_buildings,quality,quality_reasons
+2026-10-01T00:00:00.006Z,2026-10-01T00:00:00.185Z,2026-10-01T00:00:00.172Z,219,0,219,13,13,0,[],[],[],"[""pe-buildings""]",valid,[]
+2026-10-01T00:05:00.029Z,2026-10-01T00:05:00.238Z,2026-10-01T00:05:00.226Z,277,0,277,13,13,0,[],[],[],"[""pe-buildings""]",valid,[]
