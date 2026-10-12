@@ -30,8 +30,8 @@
             background-color: var(--seg);
             transition: transform 0.2s ease;
         }
-        .seg.bus::before { transform: translateX(100%); }
-        .seg a {
+        .seg.bus::before, .seg.right::before { transform: translateX(100%); }
+        .seg a, .seg button {
             position: relative;
             padding: 6px 22px;
             border-radius: 999px;
@@ -42,7 +42,8 @@
             white-space: nowrap;
             transition: color 0.2s ease;
         }
-        .seg a[aria-current="page"] { color: #ffffff; }
+        .seg button { border: none; background: none; font: inherit; font-weight: bold; cursor: pointer; }
+        .seg a[aria-current="page"], .seg button[aria-pressed="true"] { color: #ffffff; }
         .site-links { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 0.88em; }
         .datebar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 14px; }
         .datebar .mid { display: flex; align-items: center; gap: 8px; }
@@ -80,7 +81,7 @@
             .site-head { padding-left: 16px; padding-right: 16px; }
             .site-head h1 { font-size: 1.25em; }
             .seg { width: 100%; }
-            .seg a { padding: 6px 8px; }
+            .seg a, .seg button { padding: 6px 8px; }
             .datebar .pick { font-size: 1.05em; padding: 4px 10px; }
             .datebar .nav { padding: 6px 8px; }
             .datebar .nav .full { display: none; }

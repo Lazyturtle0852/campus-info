@@ -99,6 +99,7 @@
         .controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin-top: 12px; color: var(--muted); font-size: 0.88em; }
         .controls input[type="range"] { width: 160px; vertical-align: middle; }
         .controls output { color: var(--text); font-weight: bold; font-variant-numeric: tabular-nums; }
+        .dir-row { margin-top: 16px; }
         .notice { margin-top: 12px; padding: 8px 12px; border-left: 4px solid var(--faint); background-color: var(--softer); color: var(--muted); font-size: 0.88em; }
         .notice ul { margin: 4px 0 0; padding-left: 1.2em; }
 
@@ -123,6 +124,8 @@
     const SHARE_KEY = "bus.busShare";
     let refreshTimer = null;
     let busShare = readShare();
+    // 表示する向き。開いたときは午前なら来る便、午後なら帰る便。切り替えたらこのページを開いている間は保つ
+    let direction = Number(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Tokyo", hour: "numeric", hourCycle: "h23" }).format(new Date())) < 12 ? "toSfc" : "toShonandai";
 
     /* ---------- ユーティリティ ---------- */
     function parseDate(s) { const p = s.split("-").map(Number); return new Date(Date.UTC(p[0], p[1] - 1, p[2])); }
@@ -283,8 +286,9 @@
     function directionCard(key, title, sub, data) {
         const dir = data[key];
         const inbound = key === "toSfc";
+        const hidden = key === direction ? "" : " hidden";
         if (!dir.available) {
-            return '<section class="card"><h2>' + title + '</h2><div class="empty">この日の時刻表を取得できませんでした。</div></section>';
+            return '<section class="card" id="card-' + key + '"' + hidden + '><h2>' + title + '</h2><div class="empty">この日の時刻表を取得できませんでした。</div></section>';
         }
         const rows = dir.slots.filter(function (slot) {
             return slot.buses > 0 || (slot.demand || 0) > 0 || (slot.forecastDemand || 0) > 0;
@@ -308,7 +312,7 @@
         });
         table += "</tbody></table></div>";
         const nowMinute = data.date === data.campus.today ? data.campus.nowMinute : null;
-        return '<section class="card" id="card-' + key + '"><h2>' + title + "</h2>" +
+        return '<section class="card" id="card-' + key + '"' + hidden + '><h2>' + title + "</h2>" +
             '<p class="sub">' + sub + "</p>" +
             '<div class="chart-wrap">' + busChart(dir, nowMinute, title + "の需要と定員") + '<div class="tooltip"></div></div>' +
             '<div class="legend"><span><i class="bar"></i>需要（濃い＝実測、薄い＝予報。色は混雑度）</span><span><i class="cap"></i>その枠の便の定員合計</span><span><i class="act"></i>過ぎた枠の予報</span>' +
@@ -345,6 +349,10 @@
             totalKpi("SFC → 湘南台 の利用者", data.toShonandai) +
             "</div>";
 
+        html += '<div class="dir-row"><div class="seg' + (direction === "toShonandai" ? " right" : "") + '" id="dirSeg" role="group" aria-label="向きの切り替え">' +
+            '<button type="button" data-dir="toSfc" aria-pressed="' + (direction === "toSfc") + '">湘南台 → SFC</button>' +
+            '<button type="button" data-dir="toShonandai" aria-pressed="' + (direction === "toShonandai") + '">SFC → 湘南台</button>' +
+            "</div></div>";
         html += directionCard("toSfc", "湘南台 → SFC",
             "キャンパス人数が増えた分を到着とみなし、到着の" + data.assumptions.travelMinutes + "分前に湘南台を出る便に割り当てています。", data);
         html += directionCard("toShonandai", "SFC → 湘南台",
@@ -361,7 +369,20 @@
             const card = document.getElementById("card-" + pair[0]);
             if (card && data[pair[0]].available) attachTooltip(card.querySelector(".chart-wrap"), data[pair[0]], pair[1]);
         });
+        bindDirection();
         bindControls(date);
+    }
+
+    function bindDirection() {
+        const seg = document.getElementById("dirSeg");
+        seg.querySelectorAll("button").forEach(function (button) {
+            button.addEventListener("click", function () {
+                direction = button.dataset.dir;
+                seg.classList.toggle("right", direction === "toShonandai");
+                seg.querySelectorAll("button").forEach(function (b) { b.setAttribute("aria-pressed", String(b === button)); });
+                ["toSfc", "toShonandai"].forEach(function (key) { document.getElementById("card-" + key).hidden = key !== direction; });
+            });
+        });
     }
 
     function bindControls(date) {
