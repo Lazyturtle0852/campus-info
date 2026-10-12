@@ -23,11 +23,6 @@
             --shade-3: #2563eb;
             --pos: #b91c1c;
             --neg: #1d4ed8;
-            --lv1-bg: #dcfce7; --lv1-fg: #166534;
-            --lv2-bg: #fef9c3; --lv2-fg: #854d0e;
-            --lv3-bg: #ffedd5; --lv3-fg: #9a3412;
-            --lv4-bg: #fee2e2; --lv4-fg: #991b1b;
-            --lv0-bg: #e5e7eb; --lv0-fg: #374151;
         }
         * { box-sizing: border-box; }
         body {
@@ -38,21 +33,7 @@
             background-color: var(--page);
         }
         a { color: var(--forecast); }
-        header.top {
-            display: flex;
-            align-items: baseline;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            gap: 8px;
-            max-width: 1120px;
-            margin: 0 auto;
-            padding: 20px 24px 0;
-        }
-        header.top h1 { margin: 0; font-size: 1.5em; }
-        header.top h1 a { color: inherit; text-decoration: none; }
-        header.top .meta { color: var(--muted); font-size: 0.9em; }
-        header.top .meta a { margin-left: 12px; }
-        .model-line { max-width: 1120px; margin: 4px auto 0; padding: 0 24px; color: var(--muted); font-size: 0.82em; }
+        .model-line { max-width: 1120px; margin: 10px auto 0; padding: 0 24px; color: var(--muted); font-size: 0.82em; }
         .stage {
             display: inline-block;
             padding: 0 8px;
@@ -74,7 +55,7 @@
         .card .sub { margin: 0 0 12px; color: var(--muted); font-size: 0.85em; }
         .grid-2 { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
         .empty { padding: 24px; color: var(--muted); text-align: center; }
-        .error { padding: 16px; border-radius: 8px; background-color: var(--lv4-bg); color: var(--lv4-fg); }
+        .error { padding: 16px; border-radius: 8px; background-color: #fee2e2; color: #991b1b; }
 
         .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 16px; }
         .kpi { padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background-color: var(--card); }
@@ -149,58 +130,21 @@
         .scale { display: flex; align-items: center; gap: 6px; margin-top: 10px; color: var(--muted); font-size: 0.78em; flex-wrap: wrap; }
         .scale span.sw { display: inline-block; width: 16px; height: 12px; border-radius: 3px; }
 
-        .bus-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-        .bus-dir h3 { margin: 0 0 8px; font-size: 0.95em; }
-        .bus-now {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 8px;
-            padding: 10px 12px;
-            margin-bottom: 8px;
-            border-radius: 8px;
-            background-color: var(--softer);
-            font-size: 0.88em;
-        }
-        .chip { display: inline-block; padding: 1px 10px; border-radius: 999px; font-size: 0.82em; font-weight: bold; white-space: nowrap; }
-        .lv1 { background-color: var(--lv1-bg); color: var(--lv1-fg); }
-        .lv2 { background-color: var(--lv2-bg); color: var(--lv2-fg); }
-        .lv3 { background-color: var(--lv3-bg); color: var(--lv3-fg); }
-        .lv4 { background-color: var(--lv4-bg); color: var(--lv4-fg); }
-        .lv0 { background-color: var(--lv0-bg); color: var(--lv0-fg); }
-        table.bus { width: 100%; border-collapse: collapse; font-size: 0.85em; font-variant-numeric: tabular-nums; }
-        table.bus th { color: var(--muted); font-weight: normal; text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--line-strong); }
-        table.bus td { text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--line); }
-        table.bus th:first-child, table.bus td:first-child { text-align: left; }
-        table.bus td:last-child, table.bus th:last-child { text-align: center; }
-        .caveat { margin-top: 8px; color: var(--muted); font-size: 0.78em; }
-
-        .day-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 16px; }
-        .day-nav h2 { margin: 0; font-size: 1.35em; }
-        .day-nav .tag { margin-left: 8px; color: var(--muted); font-size: 0.6em; font-weight: normal; }
-        .btn { display: inline-block; padding: 6px 12px; border: 1px solid var(--line-strong); border-radius: 8px; background-color: #ffffff; color: var(--text); text-decoration: none; font-size: 0.88em; }
-        .btn:hover { background-color: var(--softer); }
+        .day-head { margin-top: 12px; color: var(--muted); font-size: 0.88em; }
         .notice { margin-top: 12px; padding: 8px 12px; border-left: 4px solid var(--faint); background-color: var(--softer); color: var(--muted); font-size: 0.88em; }
 
         @media (max-width: 900px) {
-            .grid-2, .bus-grid { grid-template-columns: 1fr; }
+            .grid-2 { grid-template-columns: 1fr; }
             .kpis { grid-template-columns: 1fr 1fr; }
+        }
+        @media (max-width: 560px) {
+            .model-line, main { padding-left: 16px; padding-right: 16px; }
         }
     </style>
 </head>
 <body>
-    <header class="top">
-        <h1><a href="/">SFCキャンパス人数 <span style="font-size:0.55em;color:var(--muted);font-weight:normal">実データ・LightGBM 予報</span></a></h1>
-        <div class="meta">
-            <span id="updated"></span>
-            <a href="/records">実績の表</a>
-            <a href="/bus">バス混雑予報</a>
-            <a href="/about">このサイトについて</a>
-            <a href="/mlstrategy">予報のしくみ</a>
-            <a href="/sample">見本（ダミー）</a>
-            <a href="/old">旧ダッシュボード</a>
-        </div>
-    </header>
+    <div id="siteNav"></div>
+    <script src="/sitenav.js"></script>
     <div class="model-line" id="modelLine"></div>
     <main id="app"><div class="card empty">読み込み中…</div></main>
 
@@ -208,13 +152,11 @@
     const DOW_JA = ["日", "月", "火", "水", "木", "金", "土"];
     const SHADE_LABEL = { 1: "少なめ", 2: "ふつう", 3: "多め" };
     const SHADE_COLOR = { 1: "var(--shade-1)", 2: "var(--shade-2)", 3: "var(--shade-3)" };
-    const LEVEL_CLASS = { low: "lv1", moderate: "lv2", crowded: "lv3", over_capacity: "lv4", unavailable: "lv0" };
     const REFRESH_MS = 5 * 60 * 1000;
     let refreshTimer = null;
 
     /* ---------- ユーティリティ ---------- */
     function parseDate(s) { const p = s.split("-").map(Number); return new Date(Date.UTC(p[0], p[1] - 1, p[2])); }
-    function addDays(s, n) { const d = parseDate(s); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
     function label(s) { const d = parseDate(s); return (d.getUTCMonth() + 1) + "/" + d.getUTCDate() + "(" + DOW_JA[d.getUTCDay()] + ")"; }
     function minToStr(m) { return Math.floor(m / 60) + ":" + String(m % 60).padStart(2, "0"); }
     function num(v) { return v === null || v === undefined ? "—" : Math.round(v).toLocaleString(); }
@@ -351,49 +293,6 @@
     }
 
     /* ---------- 部品 ---------- */
-    function chip(crowding) {
-        if (!crowding) return '<span class="chip lv0">—</span>';
-        const pct = crowding.loadPercentage != null ? " " + crowding.loadPercentage + "%" : "";
-        return '<span class="chip ' + (LEVEL_CLASS[crowding.level] || "lv0") + '">' + esc(crowding.label) + pct + "</span>";
-    }
-    function busTable(rows, key) {
-        let html = '<table class="bus"><tr><th>時間帯</th><th>本数</th><th>輸送力</th><th>需要の目安</th><th>混み具合</th></tr>';
-        let any = false;
-        rows.forEach(function (r) {
-            const x = r[key];
-            if (!x) return;
-            any = true;
-            const c = x.crowding;
-            html += "<tr><td>" + r.hour + ":00〜</td><td>" + x.buses + "本</td><td>" + num(c.transportCapacity) + "人</td><td>" +
-                (c.predictedDemand == null ? "—" : "約" + num(c.predictedDemand) + "人" + (r.basis === "actual" ? "（実測）" : "")) + "</td><td>" + chip(c) + "</td></tr>";
-        });
-        if (!any) return '<div class="empty">この時間帯の目安はありません。</div>';
-        return html + "</table>";
-    }
-    function busSection(outlook, fromHour, toHour, now) {
-        if (!outlook) return '<div class="empty">人数の予報も実測もないため、バスの目安を計算できません。</div>';
-        const rows = outlook.rows.filter(function (r) { return r.hour >= fromHour && r.hour <= toHour; });
-        function dir(key, title, nowCrowding) {
-            let html = '<div class="bus-dir"><h3>' + title + "</h3>";
-            if (now !== undefined) {
-                html += '<div class="bus-now"><span>いま（現行の計算）' +
-                    (nowCrowding && nowCrowding.predictedDemand != null
-                        ? "　需要 約" + num(nowCrowding.predictedDemand) + "人 ／ 輸送力 " + num(nowCrowding.transportCapacity) + "人"
-                        : "") +
-                    "</span>" + chip(nowCrowding) + "</div>";
-            }
-            if (key === "toShonandai" && !outlook.outboundAvailable) {
-                return html + '<div class="empty">バスの時刻表を取得できませんでした。</div></div>';
-            }
-            return html + busTable(rows, key) + "</div>";
-        }
-        const a = outlook.assumptions;
-        return '<div class="bus-grid">' +
-            dir("toShonandai", "SFC → 湘南台（帰り）", now ? now.crowding : null) +
-            dir("toSfc", "湘南台 → SFC（来る）", now ? now.inboundCrowding : null) + "</div>" +
-            '<p class="caveat">需要の目安は、人数（過ぎた時間帯は実測、これからは予報）に現行の式を当てはめたものです。帰り＝人数 × 帰宅率 ' + a.departureRate + " × バス利用率 " + a.busUseRate +
-            "、来る＝次の1時間の人数の増加分。係数は仮置きで、正解データでは検証していません。輸送力＝時刻表の本数 × 定員。</p>";
-    }
     function calendar(days, today, scale) {
         let html = '<div class="cal">';
         ["月", "火", "水", "木", "金", "土", "日"].forEach(function (w) { html += '<div class="dow">' + w + "</div>"; });
@@ -441,10 +340,7 @@
 
     /* ---------- トップ ---------- */
     async function renderHome() {
-        const results = await Promise.allSettled([getJson("/api/campus/overview"), getJson("/api/dashboard")]);
-        if (results[0].status !== "fulfilled") throw results[0].reason;
-        const o = results[0].value;
-        const dash = results[1].status === "fulfilled" ? results[1].value : null;
+        const o = await getJson("/api/campus/overview");
         const today = o.days.find(function (d) { return d.date === o.today; }) || { forecast: null, actual: null, calendar: null, type: "closed" };
         const f = today.forecast ? today.forecast.values : null;
         const nowIdx = Math.floor((o.nowMinute - o.bins[0]) / 30);
@@ -477,7 +373,6 @@
                 "<td>" + minToStr(d.forecastPeakMinute) + "ごろ</td><td>" + sparkline(d.forecast.values, maxPeak) + "</td></tr>";
         });
 
-        const currentHour = Math.floor(o.nowMinute / 60);
         document.getElementById("app").innerHTML =
             '<div class="kpis">' +
                 '<div class="kpi"><div class="label">いまの人数（実測）</div>' +
@@ -503,9 +398,7 @@
                     (list ? '<div class="list-scroll"><table class="list"><tr><th>日付</th><th>学期</th><th>ピーク人数</th><th>ピーク時刻</th><th>1日の形</th></tr>' + list + "</table></div>" : '<div class="empty">予報を作成中です。</div>') +
                 "</section>" +
                 '<section class="card"><h2>カレンダー</h2><p class="sub">過去の日も含めて、日付をクリックすると日別ページへ。</p>' + calendar(o.days, o.today, o.colorScale) + "</section>" +
-            "</div>" +
-            '<section class="card"><h2>バスの混雑（参考）</h2><p class="sub">キャンパス人数（過ぎた時間帯は実測、これからは予報）と時刻表から計算した目安です。<a href="/bus">30分ごとの詳しい予報 →</a></p>' +
-                busSection(o.todayBus, currentHour, currentHour + 4, dash || null) + "</section>";
+            "</div>";
 
         attachTooltip(document.getElementById("mainChart"), o.bins, f, today.actual, chart.geom);
         document.querySelectorAll("tr.row").forEach(function (tr) {
@@ -523,7 +416,6 @@
         const isToday = date === d.today, isPast = date < d.today;
         const f = d.forecast ? d.forecast.values : null;
         const chart = lineChart(d.bins, f, d.actual, { nowMinute: isToday ? d.nowMinute : null, height: 340, aria: label(date) + "の人数の推移" });
-        const prev = addDays(date, -1), next = addDays(date, 1);
         document.title = label(date) + " | SFCキャンパス人数";
 
         let kpis = '<div class="kpis">' +
@@ -534,11 +426,7 @@
             "</div>";
 
         document.getElementById("app").innerHTML =
-            '<div class="day-nav">' +
-                '<a class="btn" href="/archive/day/' + prev + '">← ' + label(prev) + "</a>" +
-                "<h2>" + label(date) + '<span class="tag">' + esc(weekTag(d.calendar)) + (isToday ? "・今日" : isPast ? "・過去" : "・予報") + "</span></h2>" +
-                '<a class="btn" href="/archive/day/' + next + '">' + label(next) + " →</a>" +
-            "</div>" +
+            '<div class="day-head">' + esc(weekTag(d.calendar)) + (isToday ? "・今日" : isPast ? "・過去" : "・予報") + "</div>" +
             (d.type !== "class" ? '<div class="notice">学事暦ではこの日は「' + esc(weekTag(d.calendar)) + "」です。予報は授業以外の人（ベース）だけになります。</div>" : "") +
             kpis +
             '<section class="card"><h2>人数の推移</h2><p class="sub">' + (d.actual && f ? "実測（実線）と予報（点線）を重ねています。" : d.actual ? "実測（実線）のみ。この日の予報は残っていません。" : "予報（点線）のみ。当日になると実測が重なります。") + " " + esc(basisLabel(d.forecast)) + "</p>" +
@@ -546,8 +434,7 @@
                     '<div class="legend"><span><i class="a"></i>実測</span><span><i class="f"></i>予報</span>' + (isToday ? '<span><i class="n"></i>現在時刻</span>' : "") + "</div>"
                     : '<div class="empty">この日の予報も実測もありません。</div>') +
             "</section>" +
-            (d.actual && f ? '<section class="card"><h2>30分ごとの誤差</h2><p class="sub">実測 − 予報。<span style="color:var(--pos)">赤</span>＝予報より多かった、<span style="color:var(--neg)">青</span>＝予報より少なかった。</p>' + errorChart(d.bins, f, d.actual) + "</section>" : "") +
-            (d.type === "class" ? '<section class="card"><h2>この日のバスの目安</h2><p class="sub">8時台〜19時台。キャンパス人数（過ぎた時間帯は実測）と時刻表から計算。</p>' + busSection(d.bus, 8, 19) + "</section>" : "");
+            (d.actual && f ? '<section class="card"><h2>30分ごとの誤差</h2><p class="sub">実測 − 予報。<span style="color:var(--pos)">赤</span>＝予報より多かった、<span style="color:var(--neg)">青</span>＝予報より少なかった。</p>' + errorChart(d.bins, f, d.actual) + "</section>" : "");
 
         if (f || d.actual) attachTooltip(document.getElementById("dayChart"), d.bins, f, d.actual, chart.geom);
     }
