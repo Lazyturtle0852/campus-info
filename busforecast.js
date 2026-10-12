@@ -10,6 +10,9 @@
  * 別の予報や時刻表でも動く。
  *
  * 発車時刻は返さない。返すのは30分枠ごとの本数と定員の合計だけ。
+ *
+ * 過ぎた枠（両端の人数が実測で出そろった枠）は実測の Δ で、まだの枠は予報の Δ で需要を出す。
+ * 混雑度・最混雑・合計はその需要から数え、予報の値は forecastDemand として並べて返す。
  */
 
 const DEFAULT_BUS_SHARE = 0.45;
@@ -77,9 +80,21 @@ export function createBusForecaster(options) {
         });
     }
 
+    // 実測の Δ(t) は N(t+30) の30分枠が閉じてから使う（途中の枠の平均は揺れる）。
+    function completeActual(series) {
+        if (!series.actual) return null;
+        if (series.date === undefined || series.today === undefined) return series.actual;
+        if (series.date < series.today) return series.actual;
+        if (series.date > series.today) return null;
+        return series.actual.map(function (value, i) {
+            return series.bins[i] + 30 <= series.nowMinute ? value : null;
+        });
+    }
+
     function buildDirection(direction, series, departures, busShare) {
         const inbound = direction === "to_sfc";
         const offset = inbound ? travelMinutes : 0;
+        const actual = completeActual(series);
         const slots = [];
 
         for (let i = 0; i + 1 < series.bins.length; i += 1) {
@@ -99,9 +114,13 @@ export function createBusForecaster(options) {
             }
 
             const forecastDelta = deltaAt(series.forecast, i);
-            const actualDelta = deltaAt(series.actual, i);
-            const demand = toDemand(forecastDelta);
+            const actualDelta = deltaAt(actual, i);
+            const forecastDemand = toDemand(forecastDelta);
             const actualDemand = toDemand(actualDelta);
+            const basis = actualDemand !== null
+                ? "actual"
+                : forecastDemand !== null ? "forecast" : null;
+            const demand = basis === "actual" ? actualDemand : forecastDemand;
 
             slots.push(Object.assign({
                 start: minutesToTime(start),
@@ -110,7 +129,9 @@ export function createBusForecaster(options) {
                 busWindow: { start: minutesToTime(busStart), end: minutesToTime(busEnd) },
                 forecastDelta: forecastDelta,
                 actualDelta: actualDelta,
+                basis: basis,
                 demand: demand,
+                forecastDemand: forecastDemand,
                 actualDemand: actualDemand,
                 buses: buses.length,
                 capacity: capacity,
@@ -119,8 +140,7 @@ export function createBusForecaster(options) {
                     : null,
                 unknownRoutes: Array.from(new Set(buses
                     .filter(function (bus) { return !capacities[bus.routeShortName]; })
-                    .map(function (bus) { return bus.routeShortName; }))),
-                actual: actualDemand === null ? null : classify(actualDemand, capacity)
+                    .map(function (bus) { return bus.routeShortName; })))
             }, classify(demand, capacity)));
         }
 
@@ -132,11 +152,11 @@ export function createBusForecaster(options) {
         return {
             direction: direction,
             available: Boolean(departures && departures.length > 0),
-            totalDemand: series.forecast
+            totalDemand: slots.some(function (slot) { return slot.demand !== null; })
                 ? slots.reduce(function (sum, slot) { return sum + (slot.demand || 0); }, 0)
                 : null,
             peak: peak
-                ? { start: peak.start, end: peak.end, loadPercentage: peak.loadPercentage, level: peak.level, label: peak.label }
+                ? { start: peak.start, end: peak.end, loadPercentage: peak.loadPercentage, level: peak.level, label: peak.label, basis: peak.basis }
                 : null,
             slots: slots
         };
@@ -146,7 +166,7 @@ export function createBusForecaster(options) {
         const busShare = requestOptions && requestOptions.busShare !== undefined
             ? requestOptions.busShare
             : DEFAULT_BUS_SHARE;
-        const series = await getCampusSeries(date);
+        const series = Object.assign({ date: date }, await getCampusSeries(date));
 
         async function safeDepartures(direction) {
             try {

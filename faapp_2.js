@@ -2015,11 +2015,24 @@ async function getOutboundBusData(date, stopCode, destination) {
 }
 
 /*
- * 予報した人数に現行の式を当てはめた、1時間ごとのバスの目安。
+ * 人数に現行の式を当てはめた、1時間ごとのバスの目安。
  * 帰り：人数 × 帰宅率 × バス利用率、来る：次の1時間の人数の増加分。
+ * 30分枠が閉じた分は実測の人数、それ以外は予報の人数を使う。
+ * 使った人数がすべて実測の行は basis: "actual"。
  */
-async function getHourlyBusOutlook(date, forecastValues, bins) {
-    if (!forecastValues) return null;
+async function getHourlyBusOutlook(date, day) {
+    const bins = day.bins;
+    const forecastValues = day.forecast ? day.forecast.values : null;
+    const closed = function (minute) {
+        return date < day.today ||
+            (date === day.today && minute + 30 <= day.nowMinute);
+    };
+    const actualValues = day.actual
+        ? day.actual.map(function (value, i) {
+            return value !== null && closed(bins[i]) ? value : null;
+        })
+        : null;
+    if (!forecastValues && !actualValues) return null;
 
     let outboundData = null;
     try {
@@ -2029,9 +2042,16 @@ async function getHourlyBusOutlook(date, forecastValues, bins) {
     }
     const inboundData = getInboundBusData(date);
 
+    function actualAt(minute) {
+        const index = bins.indexOf(minute);
+        return index >= 0 && actualValues ? actualValues[index] : null;
+    }
     function valueAt(minute) {
         const index = bins.indexOf(minute);
-        return index >= 0 ? forecastValues[index] : null;
+        if (index < 0) return null;
+        const actual = actualAt(minute);
+        if (actual !== null) return actual;
+        return forecastValues ? forecastValues[index] : null;
     }
 
     const rows = [];
@@ -2059,8 +2079,14 @@ async function getHourlyBusOutlook(date, forecastValues, bins) {
         const inboundCapacity =
             calculateTransportCapacity(inboundCounts).totalCapacity;
 
+        const basis = [hour * 60, hour * 60 + 30, (hour + 1) * 60]
+            .every(function (minute) { return actualAt(minute) !== null; })
+            ? "actual"
+            : "forecast";
+
         rows.push({
             hour: hour,
+            basis: basis,
             population: population,
             toShonandai: outboundCounts
                 ? {
@@ -2117,11 +2143,15 @@ app.get(
         const today = overview.days.find(function (day) {
             return day.date === overview.today;
         });
-        overview.todayBus = await getHourlyBusOutlook(
-            overview.today,
-            today && today.forecast ? today.forecast.values : null,
-            overview.bins
-        );
+        overview.todayBus = today
+            ? await getHourlyBusOutlook(overview.today, {
+                bins: overview.bins,
+                forecast: today.forecast,
+                actual: today.actual,
+                today: overview.today,
+                nowMinute: overview.nowMinute
+            })
+            : null;
         res.json(overview);
     })
 );
@@ -2131,11 +2161,7 @@ app.get(
     asyncRoute(async function (req, res) {
         const date = parseDateParam(req.params.date);
         const day = await records.getCampusDay(date, new Date());
-        day.bus = await getHourlyBusOutlook(
-            date,
-            day.forecast ? day.forecast.values : null,
-            day.bins
-        );
+        day.bus = await getHourlyBusOutlook(date, day);
         res.json(day);
     })
 );

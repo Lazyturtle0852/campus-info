@@ -76,7 +76,7 @@
         .legend i { display: inline-block; width: 22px; height: 0; margin-right: 6px; vertical-align: 4px; border-top: 2.5px solid; }
         .legend i.cap { border-color: var(--capacity); border-top-style: dashed; }
         .legend i.bar { width: 12px; height: 12px; border: none; vertical-align: -1px; border-radius: 2px; background: linear-gradient(90deg, var(--lv1-bar) 0 25%, var(--lv2-bar) 25% 50%, var(--lv3-bar) 50% 75%, var(--lv4-bar) 75%); }
-        .legend i.act { width: 9px; height: 9px; border: none; border-radius: 50%; background-color: var(--actual); vertical-align: 0; }
+        .legend i.act { width: 9px; height: 9px; border: 2px solid var(--forecast); border-radius: 50%; background-color: var(--card); vertical-align: 0; box-sizing: border-box; }
         .legend i.n { border-color: var(--now); width: 2px; height: 12px; border-top: none; border-left: 2px solid var(--now); vertical-align: -1px; }
         .tooltip {
             position: absolute;
@@ -195,7 +195,8 @@
     }
 
     /* ---------- グラフ ---------- */
-    // 棒 = 予想需要（色は混雑度）、破線 = その枠の便の定員合計、点 = 実測の人数変化から出した需要
+    // 棒 = 需要（過ぎた枠は実測、これからの枠は予報で薄く。色は混雑度）、破線 = その枠の便の定員合計、
+    // 白抜きの点 = 実測の枠に並べた予報の需要（どれだけ外れたかを見る用）
     function busChart(dir, nowMinute, aria) {
         const slots = dir.slots;
         const W = 1000, H = 260, L = 52, R = 16, T = 16, B = 30;
@@ -205,7 +206,7 @@
         const values = [];
         slots.forEach(function (s) {
             if (s.demand !== null) values.push(s.demand);
-            if (s.actualDemand !== null) values.push(s.actualDemand);
+            if (s.forecastDemand !== null) values.push(s.forecastDemand);
             values.push(s.capacity);
         });
         const maxV = values.length ? Math.max.apply(null, values) : 0;
@@ -226,7 +227,8 @@
             }
             if (slot.demand !== null && slot.demand > 0) {
                 const cls = LEVEL_CLASS[slot.level] || "lv0";
-                s += '<rect x="' + (x(i) + bw * 0.18) + '" y="' + y(slot.demand) + '" width="' + (bw * 0.64) + '" height="' + (y(0) - y(slot.demand)) + '" rx="2" fill="var(--' + cls + '-bar)"/>';
+                s += '<rect x="' + (x(i) + bw * 0.18) + '" y="' + y(slot.demand) + '" width="' + (bw * 0.64) + '" height="' + (y(0) - y(slot.demand)) + '" rx="2" fill="var(--' + cls + '-bar)"' +
+                    (slot.basis === "forecast" ? ' fill-opacity="0.45"' : "") + "/>";
             }
         });
         // 定員は枠ごとに段になる線で描く
@@ -236,8 +238,8 @@
         });
         s += '<path d="' + path + '" fill="none" stroke="var(--capacity)" stroke-width="1.5" stroke-dasharray="5 4"/>';
         slots.forEach(function (slot, i) {
-            if (slot.actualDemand !== null) {
-                s += '<circle cx="' + (x(i) + bw / 2) + '" cy="' + y(slot.actualDemand) + '" r="3.5" fill="var(--actual)"/>';
+            if (slot.basis === "actual" && slot.forecastDemand !== null) {
+                s += '<circle cx="' + (x(i) + bw / 2) + '" cy="' + y(slot.forecastDemand) + '" r="3.5" fill="var(--card)" stroke="var(--forecast)" stroke-width="2"/>';
             }
         });
         if (nowMinute !== null && n > 0) {
@@ -266,8 +268,8 @@
             const slot = slots[i];
             let html = "<b>" + hm(slot.start) + "–" + hm(slot.end) + (inbound ? " に到着" : " に出発") + "</b>";
             if (inbound) html += "湘南台発 " + hm(slot.busWindow.start) + "–" + hm(slot.busWindow.end) + "<br>";
-            html += "予想需要 " + num(slot.demand) + "人 / 定員 " + num(slot.capacity) + "人（" + slot.buses + "便）";
-            if (slot.actualDemand !== null) html += "<br>実測から " + num(slot.actualDemand) + "人";
+            html += (slot.basis === "actual" ? "実測の需要 " : "予想需要 ") + num(slot.demand) + "人 / 定員 " + num(slot.capacity) + "人（" + slot.buses + "便）";
+            if (slot.basis === "actual" && slot.forecastDemand !== null) html += "<br>予報では " + num(slot.forecastDemand) + "人";
             if (slot.loadPercentage !== null) html += "<br>" + slot.label + "（" + slot.loadPercentage + "%）";
             tip.innerHTML = html;
             tip.style.display = "block";
@@ -288,13 +290,13 @@
         }
         return '<div class="kpi"><div class="label">' + title + '</div>' +
             '<div class="value">' + dir.peak.loadPercentage + '<small>%</small></div>' +
-            '<div class="note">' + hm(dir.peak.start) + "–" + hm(dir.peak.end) + " " + chip(dir.peak.level, dir.peak.label) + "</div></div>";
+            '<div class="note">' + hm(dir.peak.start) + "–" + hm(dir.peak.end) + (dir.peak.basis === "actual" ? "（実測）" : "（予報）") + " " + chip(dir.peak.level, dir.peak.label) + "</div></div>";
     }
 
     function totalKpi(title, dir) {
         return '<div class="kpi"><div class="label">' + title + '</div>' +
             '<div class="value' + (dir.totalDemand === null ? " none" : "") + '">' + num(dir.totalDemand) + '<small>人</small></div>' +
-            '<div class="note">30分ごとの人数変化の合計 × 利用率</div></div>';
+            '<div class="note">30分ごとの人数変化の合計 × 利用率（過ぎた枠は実測）</div></div>';
     }
 
     function slotState(slot, data) {
@@ -312,12 +314,12 @@
             return '<section class="card"><h2>' + title + '</h2><div class="empty">この日の時刻表を取得できませんでした。</div></section>';
         }
         const rows = dir.slots.filter(function (slot) {
-            return slot.buses > 0 || (slot.demand || 0) > 0 || (slot.actualDemand || 0) > 0;
+            return slot.buses > 0 || (slot.demand || 0) > 0 || (slot.forecastDemand || 0) > 0;
         });
         let table = '<div class="table-scroll"><table class="bus"><thead><tr>' +
             "<th>" + (inbound ? "SFC到着" : "SFC発") + "</th>" +
             (inbound ? "<th>湘南台発</th>" : "") +
-            "<th>本数</th><th>定員</th><th>予想需要</th><th>1便あたり</th><th>実測から</th><th>混雑</th>" +
+            "<th>本数</th><th>定員</th><th>実測</th><th>予報</th><th>1便あたり</th><th>混雑</th>" +
             "</tr></thead><tbody>";
         rows.forEach(function (slot) {
             table += '<tr class="' + slotState(slot, data) + '">' +
@@ -325,9 +327,9 @@
                 (inbound ? "<td>" + hm(slot.busWindow.start) + "–" + hm(slot.busWindow.end) + "</td>" : "") +
                 "<td>" + (slot.buses > 0 ? slot.buses + "本" : "便なし") + "</td>" +
                 "<td>" + num(slot.capacity) + "</td>" +
-                "<td>" + num(slot.demand) + "</td>" +
-                "<td>" + num(slot.perBus) + "</td>" +
                 "<td>" + num(slot.actualDemand) + "</td>" +
+                "<td>" + num(slot.forecastDemand) + "</td>" +
+                "<td>" + num(slot.perBus) + "</td>" +
                 "<td>" + chip(slot.level, slot.loadPercentage !== null ? slot.label + " " + slot.loadPercentage + "%" : slot.label) + "</td>" +
                 "</tr>";
         });
@@ -335,8 +337,8 @@
         const nowMinute = data.date === data.campus.today ? data.campus.nowMinute : null;
         return '<section class="card" id="card-' + key + '"><h2>' + title + "</h2>" +
             '<p class="sub">' + sub + "</p>" +
-            '<div class="chart-wrap">' + busChart(dir, nowMinute, title + "の予想需要と定員") + '<div class="tooltip"></div></div>' +
-            '<div class="legend"><span><i class="bar"></i>予想需要（色は混雑度）</span><span><i class="cap"></i>その枠の便の定員合計</span><span><i class="act"></i>実測の人数変化から</span>' +
+            '<div class="chart-wrap">' + busChart(dir, nowMinute, title + "の需要と定員") + '<div class="tooltip"></div></div>' +
+            '<div class="legend"><span><i class="bar"></i>需要（濃い＝実測、薄い＝予報。色は混雑度）</span><span><i class="cap"></i>その枠の便の定員合計</span><span><i class="act"></i>過ぎた枠の予報</span>' +
             (nowMinute !== null ? '<span><i class="n"></i>いま</span>' : "") + "</div>" +
             table + "</section>";
     }
