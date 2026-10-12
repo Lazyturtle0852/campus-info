@@ -1162,45 +1162,70 @@ function encodeCsvRow(values) {
     return values.map(encodeCsvCell).join(",") + "\n";
 }
 
+/*
+ * 1文字ずつ cell += character で組み立てると、V8 は1文字ずつの文字列をつないだ形で持つので、
+ * 数十MBの CSV で数百MBに膨らむ（本番の 192MB の上限で起動できなくなった）。
+ * セルは slice で切り出し、"" を含むときだけ置き換える。
+ */
 function parseCsv(text) {
     const rows = [];
     let row = [];
-    let cell = "";
-    let quoted = false;
+    let index = 0;
+    const length = text.length;
 
-    for (let index = 0; index < text.length; index += 1) {
-        const character = text[index];
+    function endRow() {
+        if (row.some(function (value) { return value !== ""; })) {
+            rows.push(row);
+        }
+        row = [];
+    }
 
-        if (quoted) {
-            if (character === '"' && text[index + 1] === '"') {
-                cell += '"';
+    while (index < length) {
+        let cell;
+        if (text[index] === '"') {
+            let end = index + 1;
+            let hasEscapedQuote = false;
+            while (end < length) {
+                if (text[end] === '"') {
+                    if (text[end + 1] === '"') {
+                        hasEscapedQuote = true;
+                        end += 2;
+                        continue;
+                    }
+                    break;
+                }
+                end += 1;
+            }
+            cell = text.slice(index + 1, end);
+            // replace(/""/g) の結果も細切れの文字列になるので、split/join で平らな文字列にする
+            if (hasEscapedQuote) cell = cell.split('""').join('"');
+            index = end + 1;
+            // 閉じ引用符のあとに区切りまで文字が続く崩れた行は、その文字も足す
+            while (index < length && text[index] !== "," && text[index] !== "\n") {
+                if (text[index] !== "\r") cell += text[index];
                 index += 1;
-            } else if (character === '"') {
-                quoted = false;
-            } else {
-                cell += character;
             }
-        } else if (character === '"') {
-            quoted = true;
-        } else if (character === ",") {
-            row.push(cell);
-            cell = "";
-        } else if (character === "\n") {
-            row.push(cell.replace(/\r$/, ""));
-            if (row.some(function (value) { return value !== ""; })) {
-                rows.push(row);
-            }
-            row = [];
-            cell = "";
         } else {
-            cell += character;
+            let end = index;
+            while (end < length && text[end] !== "," && text[end] !== "\n") {
+                end += 1;
+            }
+            cell = text.slice(index, end).replace(/\r$/, "");
+            index = end;
+        }
+
+        row.push(cell);
+        if (index >= length) break;
+        if (text[index] === ",") {
+            index += 1;
+            if (index >= length) row.push("");
+        } else {
+            index += 1;
+            endRow();
         }
     }
 
-    if (cell !== "" || row.length > 0) {
-        row.push(cell.replace(/\r$/, ""));
-        rows.push(row);
-    }
+    if (row.length > 0) endRow();
 
     return rows;
 }
