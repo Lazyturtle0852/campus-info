@@ -365,13 +365,13 @@
             any = true;
             const c = x.crowding;
             html += "<tr><td>" + r.hour + ":00〜</td><td>" + x.buses + "本</td><td>" + num(c.transportCapacity) + "人</td><td>" +
-                (c.predictedDemand == null ? "—" : "約" + num(c.predictedDemand) + "人") + "</td><td>" + chip(c) + "</td></tr>";
+                (c.predictedDemand == null ? "—" : "約" + num(c.predictedDemand) + "人" + (r.basis === "actual" ? "（実測）" : "")) + "</td><td>" + chip(c) + "</td></tr>";
         });
         if (!any) return '<div class="empty">この時間帯の目安はありません。</div>';
         return html + "</table>";
     }
     function busSection(outlook, fromHour, toHour, now) {
-        if (!outlook) return '<div class="empty">予報がないため、バスの目安を計算できません。</div>';
+        if (!outlook) return '<div class="empty">人数の予報も実測もないため、バスの目安を計算できません。</div>';
         const rows = outlook.rows.filter(function (r) { return r.hour >= fromHour && r.hour <= toHour; });
         function dir(key, title, nowCrowding) {
             let html = '<div class="bus-dir"><h3>' + title + "</h3>";
@@ -391,7 +391,7 @@
         return '<div class="bus-grid">' +
             dir("toShonandai", "SFC → 湘南台（帰り）", now ? now.crowding : null) +
             dir("toSfc", "湘南台 → SFC（来る）", now ? now.inboundCrowding : null) + "</div>" +
-            '<p class="caveat">需要の目安は、予報した人数に現行の式を当てはめたものです。帰り＝人数 × 帰宅率 ' + a.departureRate + " × バス利用率 " + a.busUseRate +
+            '<p class="caveat">需要の目安は、人数（過ぎた時間帯は実測、これからは予報）に現行の式を当てはめたものです。帰り＝人数 × 帰宅率 ' + a.departureRate + " × バス利用率 " + a.busUseRate +
             "、来る＝次の1時間の人数の増加分。係数は仮置きで、正解データでは検証していません。輸送力＝時刻表の本数 × 定員。</p>";
     }
     function calendar(days, today, scale) {
@@ -504,7 +504,7 @@
                 "</section>" +
                 '<section class="card"><h2>カレンダー</h2><p class="sub">過去の日も含めて、日付をクリックすると日別ページへ。</p>' + calendar(o.days, o.today, o.colorScale) + "</section>" +
             "</div>" +
-            '<section class="card"><h2>バスの混雑（参考）</h2><p class="sub">キャンパス人数の予報と時刻表から計算した目安です。<a href="/bus">30分ごとの詳しい予報 →</a></p>' +
+            '<section class="card"><h2>バスの混雑（参考）</h2><p class="sub">キャンパス人数（過ぎた時間帯は実測、これからは予報）と時刻表から計算した目安です。<a href="/bus">30分ごとの詳しい予報 →</a></p>' +
                 busSection(o.todayBus, currentHour, currentHour + 4, dash || null) + "</section>";
 
         attachTooltip(document.getElementById("mainChart"), o.bins, f, today.actual, chart.geom);
@@ -547,7 +547,7 @@
                     : '<div class="empty">この日の予報も実測もありません。</div>') +
             "</section>" +
             (d.actual && f ? '<section class="card"><h2>30分ごとの誤差</h2><p class="sub">実測 − 予報。<span style="color:var(--pos)">赤</span>＝予報より多かった、<span style="color:var(--neg)">青</span>＝予報より少なかった。</p>' + errorChart(d.bins, f, d.actual) + "</section>" : "") +
-            (d.type === "class" ? '<section class="card"><h2>この日のバスの目安</h2><p class="sub">8時台〜19時台。キャンパス人数の予報と時刻表から計算。</p>' + busSection(d.bus, 8, 19) + "</section>" : "");
+            (d.type === "class" ? '<section class="card"><h2>この日のバスの目安</h2><p class="sub">8時台〜19時台。キャンパス人数（過ぎた時間帯は実測）と時刻表から計算。</p>' + busSection(d.bus, 8, 19) + "</section>" : "");
 
         if (f || d.actual) attachTooltip(document.getElementById("dayChart"), d.bins, f, d.actual, chart.geom);
     }
