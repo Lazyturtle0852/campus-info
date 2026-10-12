@@ -8,6 +8,8 @@
  *
  * 人数の予報そのものは知らない。getCampusSeries と getDepartures を差し替えれば
  * 別の予報や時刻表でも動く。
+ *
+ * 発車時刻は返さない。返すのは30分枠ごとの本数と定員の合計だけ。
  */
 
 const DEFAULT_BUS_SHARE = 0.45;
@@ -115,15 +117,9 @@ export function createBusForecaster(options) {
                 perBus: demand !== null && buses.length > 0
                     ? Math.round(demand / buses.length)
                     : null,
-                departures: buses.map(function (bus) {
-                    return {
-                        time: bus.departureTime.slice(0, 5),
-                        route: bus.routeShortName
-                    };
-                }),
-                unknownRoutes: buses
+                unknownRoutes: Array.from(new Set(buses
                     .filter(function (bus) { return !capacities[bus.routeShortName]; })
-                    .map(function (bus) { return bus.routeShortName; }),
+                    .map(function (bus) { return bus.routeShortName; }))),
                 actual: actualDemand === null ? null : classify(actualDemand, capacity)
             }, classify(demand, capacity)));
         }

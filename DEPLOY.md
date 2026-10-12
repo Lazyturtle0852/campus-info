@@ -86,6 +86,7 @@ certbot --apache -d campus-info.lazyta-toru.net --redirect
 | `DEPLOY_SSH_KEY` | `~/.ssh/campus-info-deploy`（秘密鍵）の中身。`base64 -i ~/.ssh/campus-info-deploy` の1行でも可 |
 | `DEPLOY_KNOWN_HOSTS` | `ssh-keyscan -t ed25519 160.251.210.209` の出力 |
 | `CLASSROOMS_B64` | 任意。教室定員の JSON があれば `base64 -i kyousitu_size.json` の出力。無ければ空か未設定（どの教室も 50人 × 0.7 で数える） |
+| `INBOUND_BUS_B64` | 任意。湘南台発（SFC 行き）の時刻表 JSON があれば `base64 -i kanachu_jikoku_from_shonandai.json` の出力。発車時刻は公開せず、30分枠ごとの本数だけに使う。無ければ湘南台 → SFC は便なしとして動く。Secret は 48KB までなので、超えるときは `jq -c` で詰める |
 | `HC_COLLECT_URL` | healthchecks.io の「取得」チェックの ping URL |
 | `HC_TRAIN_URL` | healthchecks.io の「学習」チェックの ping URL |
 

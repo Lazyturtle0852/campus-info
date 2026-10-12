@@ -116,52 +116,23 @@ function renderBuses(busData, options, busWindow) {
         return;
     }
 
-    let windowText;
+    const busCount = Object.values(busData.countsByRoute || {}).reduce(
+        function (sum, count) { return sum + count; },
+        0
+    );
+    const windowText = busWindow
+        ? busWindow.start.slice(0, 5) + " - " + busWindow.end.slice(0, 5)
+        : "対象時間帯";
 
-    if (busWindow) {
-        windowText =
-            "系統。対象時間帯 " +
-            busWindow.start.slice(0, 5) +
-            " - " +
-            busWindow.end.slice(0, 5) +
-            " の輸送力は";
-    } else {
-        windowText =
-            "系統。対象時間帯の輸送力は";
-    }
-
-    const nextBus = busData.nextBus;
-
-    if (!nextBus) {
+    if (busCount === 0) {
         output.textContent =
-            "本日、この条件に一致する今後の" +
-            options.directionLabel +
-            "のバスはありません。";
+            windowText + " に" + options.directionLabel + "のバスはありません。";
         return;
     }
 
-    const routeNames = Array.isArray(nextBus.buses)
-        ? nextBus.buses.map(function (bus) {
-            return bus.routeShortName || "系統不明";
-        })
-        : ["系統不明"];
-
-    const departureTime =
-        typeof nextBus.departureTime === "string"
-            ? nextBus.departureTime.slice(0, 5)
-            : "時刻不明";
-
     output.textContent =
-        options.directionLabel +
-        "の次のバスは" +
-        nextBus.minutesUntil +
-        "分後です。" +
-        departureTime +
-        "発、" +
-        routeNames.join("・") +
-        windowText +
-        busData.transportCapacity +
-        "人です。";
+        windowText + " の" + options.directionLabel + "のバスは" +
+        busCount + "本、輸送力は" + busData.transportCapacity + "人です。";
 }
 
 function formatSignedNumber(value) {

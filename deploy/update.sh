@@ -6,6 +6,7 @@
 #
 # 標準入力には、GitHub Secrets から組み立てた次の行が来る（無ければ今あるものを使う）。
 #   CLASSROOMS_B64=<教室定員 JSON を base64 にしたもの>（任意。DTC API に定員は無い）
+#   INBOUND_BUS_B64=<湘南台発の時刻表 JSON を base64 にしたもの>（任意。DTC API は SFC 発だけ）
 #   HC_COLLECT_URL=<healthchecks.io の URL（取得）>
 #   HC_TRAIN_URL=<healthchecks.io の URL（学習）>
 #   ACTION=train   … デプロイの代わりに、朝の学習ジョブをいますぐ1回動かす（.github/workflows/train.yml）
@@ -50,6 +51,18 @@ main() {
   fi
   if [ ! -f private-data/kyousitu_size.json ]; then
     echo "    教室定員のファイルは無し（どの教室も既定の定員で数えます）"
+  fi
+
+  local inbound
+  inbound="$(sed -n 's/^INBOUND_BUS_B64=//p' "$input" | tr -d '[:space:]')"
+  if [ -n "$inbound" ]; then
+    printf '%s' "$inbound" | base64 -d > private-data/kanachu_jikoku_from_shonandai.json.tmp
+    python3 -c 'import json,sys; json.load(open(sys.argv[1]))' private-data/kanachu_jikoku_from_shonandai.json.tmp
+    mv private-data/kanachu_jikoku_from_shonandai.json.tmp private-data/kanachu_jikoku_from_shonandai.json
+    echo "    登校側の時刻表を更新しました"
+  fi
+  if [ ! -f private-data/kanachu_jikoku_from_shonandai.json ]; then
+    echo "    登校側の時刻表は無し（湘南台 → SFC は便なしとして動きます）"
   fi
 
   if grep -qE '^HC_(COLLECT|TRAIN)_URL=' "$input"; then

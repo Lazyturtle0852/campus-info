@@ -1,6 +1,6 @@
 # main に push されたら、VPS の deploy/update.sh を SSH で動かす。
 # VPS 側の鍵は command= で update.sh しか動かせないので、ここから送れるのは
-# 標準入力の設定（教室定員と healthchecks の URL）だけ。ビルドは VPS で行う。
+# 標準入力の設定（教室定員、登校側の時刻表、healthchecks の URL）だけ。ビルドは VPS で行う。
 name: deploy
 
 on:
@@ -42,11 +42,13 @@ jobs:
         env:
           HOST: ${{ secrets.DEPLOY_HOST }}
           CLASSROOMS_B64: ${{ secrets.CLASSROOMS_B64 }}
+          INBOUND_BUS_B64: ${{ secrets.INBOUND_BUS_B64 }}
           HC_COLLECT_URL: ${{ secrets.HC_COLLECT_URL }}
           HC_TRAIN_URL: ${{ secrets.HC_TRAIN_URL }}
         run: |
           {
             printf 'CLASSROOMS_B64=%s\n' "$CLASSROOMS_B64"
+            printf 'INBOUND_BUS_B64=%s\n' "$INBOUND_BUS_B64"
             printf 'HC_COLLECT_URL=%s\n' "$HC_COLLECT_URL"
             printf 'HC_TRAIN_URL=%s\n' "$HC_TRAIN_URL"
           } | ssh -o BatchMode=yes "deploy-campus@$HOST"

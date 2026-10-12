@@ -1,4 +1,5 @@
 import express from "express";
+import holidayJp from "@holiday-jp/holiday_jp";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
@@ -29,6 +30,20 @@ const ROUTE_CAPACITIES = {
     "湘24": 70,
     "湘25": 125
 };
+
+/*
+ * バスは時刻を外に出さず、この幅の枠ごとの本数と定員だけを返す。
+ * 任意の時間帯で数えられると、枠をずらした差から発車時刻を割り出せてしまう。
+ */
+const BUS_SLOT_MINUTES = 30;
+
+// 祝日のほかに休日ダイヤで走る日（MM-DD か YYYY-MM-DD）。年末年始は年ごとの告知で変わりうる。
+const BUS_HOLIDAY_EXTRA_DAYS = String(
+    process.env.BUS_HOLIDAY_EXTRA_DAYS ||
+        "12-29,12-30,12-31,01-02,01-03"
+).split(",").map(function (day) {
+    return day.trim();
+}).filter(Boolean);
 
 const classroomInfo = loadClassroomInfo();
 const inboundBusTimetable = loadInboundBusTimetable();
@@ -149,8 +164,9 @@ function loadInboundBusTimetable() {
         return fs.existsSync(candidate);
     });
 
-    // 公開版（campus-info）は DTC API で公開されているものだけを使うので、
-    // 登校側の時刻表は置かない。無ければ「登校側の便なし」として動く。
+    // DTC API は SFC 発の便しか返さないので、登校側は神奈中の時刻表を手元に置く。
+    // 時刻そのものは外に出さず、30分枠ごとの本数だけに集計して使う。
+    // 無ければ「登校側の便なし」として動く。
     if (!filePath) {
         console.warn(
             "登校側バス時刻表JSONが無いので、登校側のバスは表示しません。"
@@ -190,10 +206,34 @@ function getScheduleType(dateString, override) {
         throw error;
     }
 
+    return getBusServiceDay(dateString);
+}
+
+/*
+ * その日のバスのダイヤ。日曜・祝日・年末年始は休日、土曜は土曜、それ以外は平日。
+ */
+function getBusServiceDay(dateString) {
+    const date = new Date(dateString + "T12:00:00+09:00");
+    if (
+        holidayJp.isHoliday(date) ||
+        BUS_HOLIDAY_EXTRA_DAYS.includes(dateString) ||
+        BUS_HOLIDAY_EXTRA_DAYS.includes(dateString.slice(5))
+    ) {
+        return "holiday";
+    }
     const day = date.getUTCDay();
     if (day === 6) return "saturday";
     if (day === 0) return "holiday";
     return "weekday";
+}
+
+// 近い日曜（月〜水は前の、木〜土は次の）。
+function getNearestSunday(dateString) {
+    const date = new Date(dateString + "T12:00:00+09:00");
+    const day = date.getUTCDay();
+    const offset = day <= 3 ? -day : 7 - day;
+    return new Date(date.getTime() + offset * 86400000)
+        .toISOString().slice(0, 10);
 }
 
 function extractTime(isoDateTime) {
@@ -205,7 +245,7 @@ function extractTime(isoDateTime) {
 }
 
 /*
- * d01（湘23・湘24）とd02（湘25）を、既存のバスAPIと同様に
+ * d01（湘23・湘24）、d02（湘25）、d03（湘19）…を、既存のバスAPIと同様に
  * timetables[].departures[]として扱える形へ統合する。
  */
 function getInboundBusData(dateString, scheduleTypeOverride) {
@@ -213,7 +253,9 @@ function getInboundBusData(dateString, scheduleTypeOverride) {
         dateString,
         scheduleTypeOverride
     );
-    const sourceKeys = ["d01", "d02"];
+    const sourceKeys = Object.keys(inboundBusTimetable).filter(function (key) {
+        return /^d\d+$/.test(key);
+    });
     const departures = [];
 
     sourceKeys.forEach(function (sourceKey) {
@@ -337,12 +379,25 @@ function secondsToTime(totalSeconds) {
 
 function getDefaultBusWindow(date) {
     const time = getTokyoTimeParts(date);
-    const startSeconds =
-        time.hour * 3600 + time.minute * 60 + time.second;
+    const startSeconds = (time.hour * 60 + time.minute) * 60;
+
+    return snapBusWindow(
+        secondsToTime(startSeconds),
+        secondsToTime(startSeconds + 3600)
+    );
+}
+
+// 時間帯を BUS_SLOT_MINUTES の枠の境目にそろえる（始まりは切り下げ、終わりは切り上げ）。
+function snapBusWindow(startTime, endTime) {
+    const start = Math.floor(timeToMinutes(startTime) / BUS_SLOT_MINUTES) *
+        BUS_SLOT_MINUTES;
+    let end = Math.ceil(timeToMinutes(endTime) / BUS_SLOT_MINUTES) *
+        BUS_SLOT_MINUTES;
+    if (end <= start) end = start + BUS_SLOT_MINUTES;
 
     return {
-        start: secondsToTime(startSeconds),
-        end: secondsToTime(startSeconds + 3600)
+        start: secondsToTime(start * 60),
+        end: secondsToTime(end * 60)
     };
 }
 
@@ -430,51 +485,6 @@ function countBusesByRoute(apiData, startTime, endTime) {
     }
 
     return result;
-}
-
-function getNextBuses(apiData, now) {
-    const time = getTokyoTimeParts(now);
-    const currentMinutes =
-        time.hour * 60 + time.minute + time.second / 60;
-
-    const departures = (apiData.timetables || []).flatMap(
-        function (timetable) {
-            return (timetable.departures || []).map(function (departure) {
-                return {
-                    ...departure,
-                    destination: timetable.destination,
-                    departureMinutes: timeToMinutes(departure.departureTime)
-                };
-            });
-        }
-    );
-
-    const futureDepartures = departures
-        .filter(function (bus) {
-            return bus.departureMinutes >= currentMinutes;
-        })
-        .sort(function (a, b) {
-            return a.departureMinutes - b.departureMinutes;
-        });
-
-    if (futureDepartures.length === 0) return null;
-
-    const nextTime = futureDepartures[0].departureMinutes;
-    const buses = futureDepartures
-        .filter(function (bus) {
-            return bus.departureMinutes === nextTime;
-        })
-        .map(function (bus) {
-            const result = { ...bus };
-            delete result.departureMinutes;
-            return result;
-        });
-
-    return {
-        departureTime: buses[0].departureTime,
-        minutesUntil: Math.max(0, Math.ceil(nextTime - currentMinutes)),
-        buses: buses
-    };
 }
 
 function calculateTransportCapacity(busCounts) {
@@ -1775,44 +1785,6 @@ app.get(
     })
 );
 
-app.get(
-    "/getbusdata",
-    asyncRoute(async function (req, res) {
-        const params = new URLSearchParams({
-            date: String(req.query.date || getTokyoDateString(new Date())),
-            stopCode: String(req.query.stopCode || "23955"),
-            destination: String(req.query.destination || "shonandai")
-        });
-        const data = await fetchJson(
-            "https://api.dtc.wide.ad.jp/bus?" + params.toString(),
-            "バス情報"
-        );
-        res.json(data);
-    })
-);
-
-app.get(
-    "/getinboundbusdata",
-    asyncRoute(async function (req, res) {
-        const date = String(
-            req.query.date || getTokyoDateString(new Date())
-        );
-        const data = getInboundBusData(
-            date,
-            req.query.scheduleType
-        );
-        const busCounts = countBusesByRoute(data, "00:00", "23:59:59");
-        const transport = calculateTransportCapacity(busCounts);
-
-        res.json({
-            ...data,
-            countsByRoute: busCounts,
-            transportCapacity: transport.totalCapacity,
-            unknownCapacityRoutes: transport.unknownRoutes
-        });
-    })
-);
-
 /*
  * フロントが利用する統合API。
  * API取得、現在時限判定、人数推定、バス集計をすべてサーバーで行う。
@@ -1825,12 +1797,12 @@ app.get(
         const stopCode = String(req.query.stopCode || "23955");
         const destination = String(req.query.destination || "shonandai");
         const defaultBusWindow = getDefaultBusWindow(now);
-        const startTime = String(
-            req.query.startTime || defaultBusWindow.start
+        const busWindow = snapBusWindow(
+            String(req.query.startTime || defaultBusWindow.start),
+            String(req.query.endTime || defaultBusWindow.end)
         );
-        const endTime = String(
-            req.query.endTime || defaultBusWindow.end
-        );
+        const startTime = busWindow.start;
+        const endTime = busWindow.end;
         const seatingRate = parseRate(
             req.query.seatingRate,
             0.6,
@@ -1860,25 +1832,14 @@ app.get(
             "routeShare"
         );
 
-        timeToMinutes(startTime);
-        timeToMinutes(endTime);
-
         const lectureParams = new URLSearchParams({ date: date });
-        const busParams = new URLSearchParams({
-            date: date,
-            stopCode: stopCode,
-            destination: destination
-        });
         const responses = await Promise.all([
             fetchJson(
                 "https://api.dtc.wide.ad.jp/lectures?" +
                     lectureParams.toString(),
                 "授業情報"
             ),
-            fetchJson(
-                "https://api.dtc.wide.ad.jp/bus?" + busParams.toString(),
-                "バス情報"
-            )
+            getOutboundBusData(date, stopCode, destination)
         ]);
 
         const lectureData = responses[0];
@@ -1967,8 +1928,8 @@ app.get(
                 unknownRooms: attendance.unknownRooms
             },
             buses: {
+                serviceDay: busData.serviceDay,
                 countsByRoute: busCounts,
-                nextBus: getNextBuses(busData, now),
                 transportCapacity: transport.totalCapacity,
                 unknownCapacityRoutes: transport.unknownRoutes
             },
@@ -1977,7 +1938,6 @@ app.get(
                 scheduleType: inboundBusData.scheduleType,
                 direction: inboundBusData.direction,
                 countsByRoute: inboundBusCounts,
-                nextBus: getNextBuses(inboundBusData, now),
                 transportCapacity: inboundTransport.totalCapacity,
                 unknownCapacityRoutes: inboundTransport.unknownRoutes
             }
@@ -1992,21 +1952,40 @@ function minutesToTime(minutes) {
         String(minute).padStart(2, "0");
 }
 
-async function getOutboundBusData(date) {
-    const cached = outboundBusCache.get(date);
+async function getOutboundBusData(date, stopCode, destination) {
+    stopCode = stopCode || "23955";
+    destination = destination || "shonandai";
+    const key = [date, stopCode, destination].join("|");
+    const cached = outboundBusCache.get(key);
     if (cached && Date.now() - cached.fetchedAt < 60 * 60 * 1000) {
         return cached.data;
     }
-    const params = new URLSearchParams({
-        date: date,
-        stopCode: "23955",
-        destination: "shonandai"
-    });
-    const data = await fetchJson(
-        "https://api.dtc.wide.ad.jp/bus?" + params.toString(),
-        "バス情報"
-    );
-    outboundBusCache.set(date, { fetchedAt: Date.now(), data: data });
+
+    function fetchFor(serviceDate) {
+        const params = new URLSearchParams({
+            date: serviceDate,
+            stopCode: stopCode,
+            destination: destination
+        });
+        return fetchJson(
+            "https://api.dtc.wide.ad.jp/bus?" + params.toString(),
+            "バス情報"
+        );
+    }
+
+    let data = await fetchFor(date);
+    // DTC API は曜日だけでダイヤを選び、祝日も平日として返す（2026-10 時点）。
+    // 祝日・年末年始は、近い日曜の時刻表を休日ダイヤとして借りる。
+    if (getBusServiceDay(date) === "holiday" && data.serviceDay !== "holiday") {
+        const sunday = getNearestSunday(date);
+        const borrowed = await fetchFor(sunday);
+        data = Object.assign({}, borrowed, {
+            serviceDate: date,
+            serviceDay: "holiday",
+            timetableBorrowedFrom: sunday
+        });
+    }
+    outboundBusCache.set(key, { fetchedAt: Date.now(), data: data });
     return data;
 }
 
