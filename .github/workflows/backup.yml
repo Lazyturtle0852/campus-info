@@ -43,9 +43,12 @@ jobs:
           from pathlib import Path
 
           site = os.environ["SITE"]
+          # Cloudflare は Python-urllib の既定の User-Agent を 403 で弾くので、名乗っておく。
+          user_agent = "campus-info-backup (+https://github.com/Lazyturtle0852/campus-info)"
 
           def get(path):
-              with urllib.request.urlopen(f"{site}/{path}", timeout=120) as r:
+              req = urllib.request.Request(f"{site}/{path}", headers={"User-Agent": user_agent})
+              with urllib.request.urlopen(req, timeout=120) as r:
                   return r.read()
 
           def split_by_month(name, text):
